@@ -1,3 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.1+cpu
+transformers
 fastapi
 uvicorn
 gunicorn
@@ -9,6 +12,4 @@ joblib
 slowapi
 bleach
 python-dotenv
-torch
-transformers
 requests
