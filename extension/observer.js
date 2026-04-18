@@ -1,12 +1,3 @@
-const intersectionObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-            processEmailRow(entry.target);
-            intersectionObserver.unobserve(entry.target);
-        }
-    });
-}, { threshold: 0.15, rootMargin: "120px 0px" });
-
 let observerStarted = false;
 let inboxScanScheduled = false;
 let lastOpenedEmailKey = "";
@@ -17,17 +8,28 @@ function startObserving() {
     }
     observerStarted = true;
 
-    scheduleInboxScan();
+    scheduleInboxScan(true);
 
     const observer = new MutationObserver(() => {
-        scheduleInboxScan();
+        scheduleInboxScan(false);
         scheduleOpenedEmailCheck();
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
+
+    window.addEventListener("scroll", () => scheduleInboxScan(false), { passive: true });
 }
 
-function scheduleInboxScan() {
+function isRowVisible(row) {
+    const rect = row.getBoundingClientRect();
+    return rect.bottom >= -40 && rect.top <= window.innerHeight + 120;
+}
+
+function getRowKey(row, sender, subject, snippet) {
+    return row.id || `${sender}::${subject}::${snippet}`.trim();
+}
+
+function scheduleInboxScan(forceAll) {
     if (inboxScanScheduled) {
         return;
     }
@@ -35,14 +37,30 @@ function scheduleInboxScan() {
     inboxScanScheduled = true;
     setTimeout(() => {
         inboxScanScheduled = false;
-        const rows = document.querySelectorAll('tr[role="row"]');
-        rows.forEach((row) => {
-            if (!row.dataset.observed) {
-                row.dataset.observed = "true";
-                intersectionObserver.observe(row);
+        const rows = Array.from(document.querySelectorAll('tr[role="row"]'));
+
+        rows.forEach((row, index) => {
+            const sender = row.querySelector('.zF')?.getAttribute('email') ||
+                row.querySelector('.bA4')?.innerText || "";
+            const subject = row.querySelector('.bog')?.innerText || "";
+            const snippet = row.querySelector('.y2')?.innerText || "";
+            const rowKey = getRowKey(row, sender, subject, snippet);
+
+            if (!rowKey.trim()) {
+                return;
+            }
+
+            if (row.dataset.badgeKey !== rowKey) {
+                row.dataset.analysisStarted = "";
+                row.dataset.badgeKey = rowKey;
+            }
+
+            const shouldProcess = forceAll || index < 15 || isRowVisible(row);
+            if (shouldProcess) {
+                processEmailRow(row, sender, subject, snippet, rowKey);
             }
         });
-    }, 250);
+    }, 120);
 }
 
 function scheduleOpenedEmailCheck() {
@@ -74,29 +92,37 @@ function scheduleOpenedEmailCheck() {
     });
 }
 
-async function processEmailRow(row) {
-    if (row.dataset.analysisStarted === "true") {
+async function processEmailRow(row, sender, subject, snippet, rowKey) {
+    if (row.querySelector(".spam-badge") && row.dataset.analysisKey === rowKey) {
         return;
     }
 
-    const sender = row.querySelector('.zF')?.getAttribute('email') ||
-                   row.querySelector('.bA4')?.innerText || "";
-    const subject = row.querySelector('.bog')?.innerText || "";
-    const snippet = row.querySelector('.y2')?.innerText || "";
+    if (row.dataset.analysisStarted === "true" && row.dataset.analysisKey === rowKey) {
+        return;
+    }
 
     row.dataset.analysisStarted = "true";
+    row.dataset.analysisKey = rowKey;
 
     const data = await getEmailAnalysis({
-        id: row.id || subject + sender,
+        id: rowKey,
         subject,
         sender,
         snippet,
         analysisMode: "preview"
     });
 
-    if (data) {
-        injectBadgeToRow(row, data);
+    if (!data) {
+        row.dataset.analysisStarted = "";
+        return;
     }
+
+    const existingBadge = row.querySelector(".spam-badge");
+    if (existingBadge) {
+        existingBadge.remove();
+    }
+
+    injectBadgeToRow(row, data);
 }
 
 async function processOpenedEmail(container, subject, bodyText, hash) {
