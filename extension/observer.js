@@ -97,12 +97,15 @@ async function processEmailRow(row, sender, subject, snippet, rowKey) {
         return;
     }
 
-    if (row.dataset.analysisStarted === "true" && row.dataset.analysisKey === rowKey) {
+    if (row.dataset.analysisStarted === "true" &&
+        row.dataset.analysisKey === rowKey &&
+        row.dataset.analysisInFlight === "true") {
         return;
     }
 
     row.dataset.analysisStarted = "true";
     row.dataset.analysisKey = rowKey;
+    row.dataset.analysisInFlight = "true";
 
     const data = await getEmailAnalysis({
         id: rowKey,
@@ -113,7 +116,7 @@ async function processEmailRow(row, sender, subject, snippet, rowKey) {
     });
 
     if (!data) {
-        row.dataset.analysisStarted = "";
+        row.dataset.analysisInFlight = "";
         return;
     }
 
@@ -123,6 +126,7 @@ async function processEmailRow(row, sender, subject, snippet, rowKey) {
     }
 
     injectBadgeToRow(row, data);
+    row.dataset.analysisInFlight = "";
 }
 
 async function processOpenedEmail(container, subject, bodyText, hash) {
