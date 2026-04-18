@@ -7,11 +7,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Use SQLite locally, PostgreSQL in production (Railway provides DATABASE_URL)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./spam_assistant.db")
+# Railway provides DATABASE_URL. If not present, fallback to local SQLite.
+db_url = os.getenv("DATABASE_URL")
 
-if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if not db_url:
+    DATABASE_URL = "sqlite:///./spam_assistant.db"
+else:
+    # Railway's postgres:// must be postgresql:// for SQLAlchemy 1.4+
+    DATABASE_URL = db_url.replace("postgres://", "postgresql://", 1)
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -22,10 +25,14 @@ class Feedback(Base):
     id = Column(Integer, primary_key=True, index=True)
     email_text = Column(Text)
     prediction = Column(String)
-    user_label = Column(Boolean) # True for Spam, False for Ham
+    user_label = Column(Boolean)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
 
-Base.metadata.create_all(bind=engine)
+# Safely create tables
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"Database table creation error: {e}")
 
 def get_db():
     db = SessionLocal()

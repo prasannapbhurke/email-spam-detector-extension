@@ -9,7 +9,7 @@ function getErrorMessage(error) {
 
 async function securePost(endpoint, body) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s for production cold starts
 
     try {
         const response = await fetch(API_BASE_URL + endpoint, {
@@ -34,9 +34,10 @@ async function securePost(endpoint, body) {
 }
 
 async function getEmailAnalysis(email) {
+    // FIX: Ensure no 'undefined' strings are sent to the backend
     const payload = {
-        email_text: `${email.subject} ${email.snippet} ${email.body}`,
-        html_content: email.body // Assuming body contains HTML for link analysis
+        email_text: `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content",
+        html_content: email.body || ""
     };
 
     try {
@@ -60,8 +61,8 @@ async function getEmailAnalysis(email) {
 
 async function sendFeedback(emailObj, isActuallySpam) {
     const feedbackPayload = {
-        id: emailObj.id,
-        text: `${emailObj.subject} ${emailObj.body}`,
+        text: `${emailObj.subject || ""} ${emailObj.body || ""}`,
+        prediction: isActuallySpam ? "spam" : "ham",
         isActuallySpam: isActuallySpam
     };
     try {
