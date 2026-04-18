@@ -3,6 +3,30 @@
  */
 
 const UI = {
+    getQuarantineSignature(emailObj) {
+        const subject = (emailObj.subject || "").trim().toLowerCase();
+        const bodyStart = (emailObj.body || "").trim().toLowerCase().slice(0, 120);
+        return `${subject}::${bodyStart}`;
+    },
+
+    async persistQuarantine(emailObj) {
+        if (!globalThis.chrome?.storage?.local) {
+            return;
+        }
+
+        const signature = this.getQuarantineSignature(emailObj);
+        if (!signature.trim()) {
+            return;
+        }
+
+        const current = await chrome.storage.local.get(["quarantinedEmails"]);
+        const quarantinedEmails = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
+        if (!quarantinedEmails.includes(signature)) {
+            quarantinedEmails.push(signature);
+            await chrome.storage.local.set({ quarantinedEmails: quarantinedEmails.slice(-200) });
+        }
+    },
+
     removeMatchingInboxRows(emailObj) {
         const rows = document.querySelectorAll('tr[role="row"]');
         const subjectNeedle = (emailObj.subject || "").trim().toLowerCase();
@@ -91,6 +115,7 @@ const UI = {
 
         panel.querySelector("#btn-quarantine").onclick = () => {
             sendFeedback(emailObj, true);
+            this.persistQuarantine(emailObj);
 
             // 1. ARCHIVE THE EMAIL (Real removal from inbox)
             // We simulate a click on Gmail's 'Archive' button or use the 'e' shortcut

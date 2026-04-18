@@ -2,6 +2,39 @@ let observerStarted = false;
 let inboxScanScheduled = false;
 let lastOpenedEmailKey = "";
 let inboxRefreshTimer = null;
+let quarantinedSignatures = new Set();
+
+async function loadQuarantinedSignatures() {
+    if (!globalThis.chrome?.storage?.local) {
+        return;
+    }
+
+    const current = await chrome.storage.local.get(["quarantinedEmails"]);
+    const items = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
+    quarantinedSignatures = new Set(items);
+}
+
+function buildQuarantineSignature(subject, snippet) {
+    return `${(subject || "").trim().toLowerCase()}::${(snippet || "").trim().toLowerCase().slice(0, 120)}`;
+}
+
+function rowMatchesQuarantine(subject, snippet) {
+    const signature = buildQuarantineSignature(subject, snippet);
+    if (quarantinedSignatures.has(signature)) {
+        return true;
+    }
+
+    for (const savedSignature of quarantinedSignatures) {
+        const [savedSubject, savedBodyStart] = savedSignature.split("::");
+        const subjectMatches = savedSubject && (subject || "").trim().toLowerCase() === savedSubject;
+        const snippetMatches = savedBodyStart && (snippet || "").trim().toLowerCase().includes(savedBodyStart.slice(0, 40));
+        if (subjectMatches || snippetMatches) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 function startObserving() {
     if (observerStarted) {
@@ -9,7 +42,7 @@ function startObserving() {
     }
     observerStarted = true;
 
-    scheduleInboxScan(true);
+    loadQuarantinedSignatures().finally(() => scheduleInboxScan(true));
 
     const observer = new MutationObserver(() => {
         scheduleInboxScan(false);
@@ -39,6 +72,12 @@ function scheduleInboxScan(forceAll) {
                 row.querySelector('.bA4')?.innerText || "";
             const subject = row.querySelector('.bog')?.innerText || "";
             const snippet = row.querySelector('.y2')?.innerText || "";
+
+            if (rowMatchesQuarantine(subject, snippet)) {
+                row.style.display = "none";
+                return;
+            }
+
             const rowKey = getRowKey(row, sender, subject, snippet);
 
             if (!rowKey.trim()) {
