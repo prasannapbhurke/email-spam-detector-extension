@@ -3,6 +3,24 @@
  */
 
 const UI = {
+    removeMatchingInboxRows(emailObj) {
+        const rows = document.querySelectorAll('tr[role="row"]');
+        const subjectNeedle = (emailObj.subject || "").trim().toLowerCase();
+        const bodyNeedle = (emailObj.body || "").trim().toLowerCase().slice(0, 80);
+
+        rows.forEach((row) => {
+            const subjectText = (row.querySelector('.bog')?.innerText || "").trim().toLowerCase();
+            const snippetText = (row.querySelector('.y2')?.innerText || "").trim().toLowerCase();
+
+            const subjectMatches = subjectNeedle && subjectText.includes(subjectNeedle);
+            const bodyMatches = bodyNeedle && snippetText && bodyNeedle.includes(snippetText.slice(0, Math.min(snippetText.length, 30)));
+
+            if (subjectMatches || bodyMatches) {
+                row.style.display = "none";
+            }
+        });
+    },
+
     getPanelState(data) {
         if (data.risk_score >= 75) {
             return {
@@ -84,6 +102,9 @@ const UI = {
                 const body = document.querySelector('.ii.gt') || document.querySelector('.a3s.aiL');
                 if (body) body.style.display = 'none';
             }
+
+            this.removeMatchingInboxRows(emailObj);
+            panel.remove();
 
             // 2. Show the Security Overlay
             const overlay = document.createElement('div');
