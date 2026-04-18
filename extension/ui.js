@@ -111,14 +111,13 @@ const UI = {
         const cell = row.querySelector(".y6");
         if (!cell || row.querySelector(".spam-badge")) return;
 
-        if (data.previewOnly && !data.isSpam) {
-            return;
-        }
-
         const badge = document.createElement("span");
-        badge.className = `spam-badge ${data.isSpam ? 'high' : 'low'}`;
+        const badgeLevel = data.previewOnly
+            ? (data.isSpam ? 'high' : 'neutral')
+            : (data.isSpam ? 'high' : 'low');
+        badge.className = `spam-badge ${badgeLevel}`;
         badge.textContent = data.previewOnly
-            ? (data.isSpam ? 'Review' : 'Scanned')
+            ? (data.isSpam ? 'Review' : 'Checked')
             : (data.isSpam ? 'Suspicious' : 'Safe');
         cell.appendChild(badge);
 

@@ -49,6 +49,16 @@
     color: var(--safe-green);
 }
 
+.spam-badge.low {
+    background: var(--safe-green-soft);
+    color: var(--safe-green);
+}
+
+.spam-badge.neutral {
+    background: #f1f3f4;
+    color: var(--muted);
+}
+
 .spam-tooltip {
     position: absolute;
     background: var(--panel-bg);
