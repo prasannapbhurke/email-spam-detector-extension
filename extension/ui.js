@@ -19,12 +19,43 @@ const UI = {
             return;
         }
 
-        const current = await chrome.storage.local.get(["quarantinedEmails"]);
+        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems"]);
         const quarantinedEmails = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
+        const quarantineItems = Array.isArray(current.quarantineItems) ? current.quarantineItems : [];
         if (!quarantinedEmails.includes(signature)) {
             quarantinedEmails.push(signature);
-            await chrome.storage.local.set({ quarantinedEmails: quarantinedEmails.slice(-200) });
         }
+
+        const item = {
+            signature,
+            subject: (emailObj.subject || "No subject").trim(),
+            preview: (emailObj.body || "").trim().slice(0, 140),
+            quarantinedAt: new Date().toISOString()
+        };
+
+        const filteredItems = quarantineItems.filter((entry) => entry.signature !== signature);
+        filteredItems.unshift(item);
+
+        await chrome.storage.local.set({
+            quarantinedEmails: quarantinedEmails.slice(-200),
+            quarantineItems: filteredItems.slice(0, 100)
+        });
+    },
+
+    async clearQuarantineSignature(emailObj) {
+        if (!globalThis.chrome?.storage?.local) {
+            return;
+        }
+
+        const signature = this.getQuarantineSignature(emailObj);
+        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems"]);
+        const quarantinedEmails = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
+        const quarantineItems = Array.isArray(current.quarantineItems) ? current.quarantineItems : [];
+
+        await chrome.storage.local.set({
+            quarantinedEmails: quarantinedEmails.filter((value) => value !== signature),
+            quarantineItems: quarantineItems.filter((entry) => entry.signature !== signature)
+        });
     },
 
     removeMatchingInboxRows(emailObj) {
@@ -109,6 +140,7 @@ const UI = {
 
         panel.querySelector("#btn-mark-safe").onclick = () => {
             sendFeedback(emailObj, false);
+            this.clearQuarantineSignature(emailObj);
             this.clearHighlights();
             panel.remove();
         };

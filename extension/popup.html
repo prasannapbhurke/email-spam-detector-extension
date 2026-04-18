@@ -4,29 +4,100 @@
     <title>Smart Gmail Spam Detector</title>
     <style>
         body {
-            width: 300px;
-            padding: 15px;
+            width: 340px;
+            padding: 14px;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #202124;
+            background: #ffffff;
         }
         h2 {
-            margin-top: 0;
+            margin: 0 0 12px 0;
             color: #1a73e8;
             font-size: 1.2rem;
         }
         .status {
             padding: 10px;
-            border-radius: 4px;
+            border-radius: 8px;
             background-color: #f1f3f4;
             font-size: 0.9rem;
         }
         .stats {
-            margin-top: 15px;
+            margin-top: 14px;
         }
         .stat-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             font-size: 0.85rem;
+        }
+        .section-title {
+            margin: 16px 0 8px 0;
+            font-size: 0.95rem;
+            font-weight: 700;
+        }
+        .quarantine-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 260px;
+            overflow-y: auto;
+        }
+        .quarantine-item {
+            border: 1px solid #eceff1;
+            border-radius: 10px;
+            padding: 10px;
+            background: #fafbfc;
+        }
+        .quarantine-item-title {
+            font-size: 0.88rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: #8b1e18;
+        }
+        .quarantine-item-preview {
+            font-size: 0.78rem;
+            color: #5f6368;
+            line-height: 1.35;
+            margin-bottom: 8px;
+        }
+        .quarantine-item-meta {
+            font-size: 0.72rem;
+            color: #80868b;
+            margin-bottom: 8px;
+        }
+        .quarantine-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+        }
+        .btn {
+            border: none;
+            border-radius: 8px;
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+        .btn-clear {
+            background: #fde8e6;
+            color: #8b1e18;
+        }
+        .btn-clear-all {
+            background: #f1f3f4;
+            color: #202124;
+        }
+        .empty-state {
+            padding: 12px;
+            border-radius: 10px;
+            background: #f8f9fa;
+            font-size: 0.8rem;
+            color: #5f6368;
+        }
+        .header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
         }
     </style>
 </head>
@@ -41,10 +112,19 @@
             <span style="color: #188038; font-weight: bold;">Smart (Selective)</span>
         </div>
         <div class="stat-item">
-            <span>Port:</span>
-            <span>8002</span>
+            <span>Backend:</span>
+            <span>Railway</span>
         </div>
     </div>
+
+    <div class="header-row">
+        <div class="section-title">AI Quarantine</div>
+        <button class="btn btn-clear-all" id="clear-all-btn" type="button">Clear All</button>
+    </div>
+    <div id="quarantine-container">
+        <div class="empty-state">No quarantined emails yet.</div>
+    </div>
+
     <script src="popup.js"></script>
 </body>
 </html>
