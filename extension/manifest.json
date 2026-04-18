@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Smart Gmail Spam Detector",
+  "version": "1.0",
+  "description": "Intelligent spam detection with explainable AI for Gmail.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://mail.google.com/*",
+    "https://*.up.railway.app/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["api.js", "ui.js", "observer.js", "content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icons/*.png"],
+      "matches": ["https://mail.google.com/*"]
+    }
+  ]
+}

@@ -1,0 +1,223 @@
+:root {
+    --spam-red: #d93025;
+    --spam-red-deep: #8b1e18;
+    --spam-red-soft: #fde8e6;
+    --safe-green: #188038;
+    --safe-green-soft: #e6f4ea;
+    --warn-amber: #b06000;
+    --warn-amber-soft: #fff4d6;
+    --ink: #202124;
+    --muted: #5f6368;
+    --panel-bg: rgba(255, 255, 255, 0.96);
+    --shadow: 0 12px 28px rgba(32, 33, 36, 0.18);
+}
+
+.spam-badge {
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-left: 8px;
+    letter-spacing: 0.02em;
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    cursor: default;
+    display: inline-block;
+}
+
+.spam-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+}
+
+.spam-badge.critical {
+    background: linear-gradient(135deg, var(--spam-red), var(--spam-red-deep));
+    color: #fff;
+}
+
+.spam-badge.high {
+    background: var(--spam-red-soft);
+    color: var(--spam-red-deep);
+}
+
+.spam-badge.med {
+    background: var(--warn-amber-soft);
+    color: var(--warn-amber);
+}
+
+.spam-badge.safe {
+    background: var(--safe-green-soft);
+    color: var(--safe-green);
+}
+
+.spam-tooltip {
+    position: absolute;
+    background: var(--panel-bg);
+    border: 1px solid rgba(32, 33, 36, 0.08);
+    box-shadow: var(--shadow);
+    padding: 12px;
+    border-radius: 10px;
+    z-index: 10000;
+    width: 240px;
+    font-size: 13px;
+    color: var(--ink);
+    animation: fadeIn 0.2s ease;
+    pointer-events: none;
+}
+
+.spam-panel-floating {
+    margin: 16px;
+    padding: 18px;
+    background: var(--panel-bg);
+    border-radius: 18px;
+    border: 1px solid rgba(32, 33, 36, 0.08);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    animation: slideDown 0.28s ease;
+}
+
+.spam-panel-floating.critical {
+    border-color: rgba(217, 48, 37, 0.22);
+    box-shadow: 0 14px 30px rgba(217, 48, 37, 0.18);
+}
+
+.spam-panel-floating.warning {
+    border-color: rgba(176, 96, 0, 0.18);
+}
+
+.spam-panel-floating.safe {
+    border-color: rgba(24, 128, 56, 0.18);
+}
+
+.spam-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.spam-panel-kicker {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+}
+
+.spam-panel-title {
+    font-weight: 700;
+    font-size: 18px;
+    color: var(--ink);
+}
+
+.spam-panel-score {
+    min-width: 62px;
+    text-align: center;
+    padding: 8px 10px;
+    border-radius: 12px;
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1;
+    background: #f1f3f4;
+    color: var(--ink);
+}
+
+.spam-panel-floating.critical .spam-panel-score {
+    background: var(--spam-red-soft);
+    color: var(--spam-red-deep);
+}
+
+.spam-panel-floating.warning .spam-panel-score {
+    background: var(--warn-amber-soft);
+    color: var(--warn-amber);
+}
+
+.spam-panel-floating.safe .spam-panel-score {
+    background: var(--safe-green-soft);
+    color: var(--safe-green);
+}
+
+.spam-panel-explanation {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--muted);
+}
+
+.kw-tag-list {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.kw-tag {
+    background: #f1f3f4;
+    color: var(--ink);
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.spam-panel-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 2px;
+}
+
+.spam-btn {
+    padding: 8px 16px;
+    border-radius: 10px;
+    border: none;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.spam-btn:hover {
+    transform: translateY(-1px);
+}
+
+.spam-btn-safe {
+    background: var(--safe-green-soft);
+    color: var(--safe-green);
+}
+
+.spam-btn-safe:hover {
+    background: #d7eedc;
+}
+
+.spam-btn-report {
+    background: var(--spam-red-soft);
+    color: var(--spam-red-deep);
+}
+
+.spam-btn-report:hover {
+    background: #f8d6d2;
+}
+
+.spam-highlight-text {
+    background: rgba(217, 48, 37, 0.16);
+    border-bottom: 2px solid var(--spam-red);
+    padding: 0 2px;
+    border-radius: 3px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

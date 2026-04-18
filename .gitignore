@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+ENV/
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# Machine Learning
+# Un-comment the next line if you want to push the model file (it's small enough for now)
+# spam_model.joblib
+
+# OS
+.DS_Store
+Thumbs.db

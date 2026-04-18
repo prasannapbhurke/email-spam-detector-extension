@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Smart Gmail Spam Detector</title>
+    <style>
+        body {
+            width: 300px;
+            padding: 15px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        h2 {
+            margin-top: 0;
+            color: #1a73e8;
+            font-size: 1.2rem;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f1f3f4;
+            font-size: 0.9rem;
+        }
+        .stats {
+            margin-top: 15px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <h2>Spam Detector AI</h2>
+    <div class="status" id="status-text">
+        Backend: <span id="backend-status" style="font-weight: bold;">Checking...</span>
+    </div>
+    <div class="stats">
+        <div class="stat-item">
+            <span>Scan Mode:</span>
+            <span style="color: #188038; font-weight: bold;">Smart (Selective)</span>
+        </div>
+        <div class="stat-item">
+            <span>Port:</span>
+            <span>8002</span>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
