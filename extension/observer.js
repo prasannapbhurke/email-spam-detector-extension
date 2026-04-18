@@ -1,6 +1,7 @@
 let observerStarted = false;
 let inboxScanScheduled = false;
 let lastOpenedEmailKey = "";
+let inboxRefreshTimer = null;
 
 function startObserving() {
     if (observerStarted) {
@@ -16,13 +17,7 @@ function startObserving() {
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
-
-    window.addEventListener("scroll", () => scheduleInboxScan(false), { passive: true });
-}
-
-function isRowVisible(row) {
-    const rect = row.getBoundingClientRect();
-    return rect.bottom >= -40 && rect.top <= window.innerHeight + 120;
+    inboxRefreshTimer = window.setInterval(() => scheduleInboxScan(false), 2000);
 }
 
 function getRowKey(row, sender, subject, snippet) {
@@ -39,7 +34,7 @@ function scheduleInboxScan(forceAll) {
         inboxScanScheduled = false;
         const rows = Array.from(document.querySelectorAll('tr[role="row"]'));
 
-        rows.forEach((row, index) => {
+        rows.forEach((row) => {
             const sender = row.querySelector('.zF')?.getAttribute('email') ||
                 row.querySelector('.bA4')?.innerText || "";
             const subject = row.querySelector('.bog')?.innerText || "";
@@ -55,10 +50,7 @@ function scheduleInboxScan(forceAll) {
                 row.dataset.badgeKey = rowKey;
             }
 
-            const shouldProcess = forceAll || index < 15 || isRowVisible(row);
-            if (shouldProcess) {
-                processEmailRow(row, sender, subject, snippet, rowKey);
-            }
+            processEmailRow(row, sender, subject, snippet, rowKey);
         });
     }, 120);
 }
