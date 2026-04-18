@@ -1,4 +1,4 @@
-const API_BASE_URL = "http://127.0.0.1:8002";
+const API_BASE_URL = "https://web-production-edebc.up.railway.app";
 const API_KEY = "dev-secret-key-12345";
 
 let requestQueue = Promise.resolve();
@@ -22,7 +22,7 @@ function getErrorMessage(error) {
 async function securePost(endpoint, body) {
     requestQueue = requestQueue.then(async () => {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
 
         try {
             const response = await fetch(API_BASE_URL + endpoint, {

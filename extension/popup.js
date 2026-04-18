@@ -1,7 +1,7 @@
 async function checkBackend() {
     const statusEl = document.getElementById('backend-status');
     try {
-        const response = await fetch('http://127.0.0.1:8002/health', {
+        const response = await fetch('https://web-production-edebc.up.railway.app/', {
             method: 'GET'
         });
         if (response.ok) {
