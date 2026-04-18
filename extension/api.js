@@ -1,9 +1,11 @@
 const API_BASE_URL = "https://web-production-edebc.up.railway.app";
 const API_KEY = "dev-secret-key-12345";
+const CACHE_VERSION = "v2";
 
 let requestQueue = Promise.resolve();
 const analysisCache = new Map();
 const MAX_CACHE_SIZE = 300;
+
 const TRUSTED_SENDER_PATTERNS = [
     /@google\.com$/i,
     /@github\.com$/i,
@@ -16,10 +18,11 @@ const TRUSTED_SENDER_PATTERNS = [
     /@nvidia\.com$/i,
     /@heroku\.com$/i
 ];
+
 const LOCAL_SPAM_PATTERNS = [
     { pattern: /\bcongratulations\b/i, score: 14, reason: "Prize-style congratulations wording detected." },
     { pattern: /\byou won\b/i, score: 26, reason: "Winning-claim wording detected." },
-    { pattern: /₹\s?\d[\d,]*/i, score: 24, reason: "Large money prize amount detected." },
+    { pattern: /[\u20B9₹]\s?\d[\d,]*/i, score: 24, reason: "Large money prize amount detected." },
     { pattern: /\bselected as a winner\b/i, score: 24, reason: "Winner selection wording detected." },
     { pattern: /\binternational lottery\b/i, score: 28, reason: "Lottery scam wording detected." },
     { pattern: /\blottery\b/i, score: 22, reason: "Lottery claim language detected." },
@@ -92,7 +95,7 @@ async function securePost(endpoint, body) {
 }
 
 function getCacheKey(emailText, analysisMode) {
-    return `${analysisMode}:${emailText}`;
+    return `${CACHE_VERSION}:${analysisMode}:${emailText}`;
 }
 
 function readCachedAnalysis(emailText, analysisMode) {
@@ -108,56 +111,14 @@ function storeCachedAnalysis(emailText, analysisMode, value) {
     analysisCache.set(key, value);
 }
 
-function normalizePrediction(result, emailText) {
-    const riskScore = Number(result.risk_score) || 0;
-    const confidence = typeof result.confidence === "number" ? result.confidence : riskScore / 100;
-    const reasons = Array.isArray(result.reasons) ? result.reasons : [];
-    const rawKeywords = Array.isArray(result.keywords) ? result.keywords : [];
-    const contributingKeywords = rawKeywords.map((keyword) => {
-        if (typeof keyword === "string") {
-            return { word: keyword, importance: 0.5 };
-        }
-
-        return {
-            word: keyword.word || "",
-            importance: typeof keyword.importance === "number" ? keyword.importance : 0.5
-        };
-    }).filter((keyword) => keyword.word);
-
-    const intentSummary = reasons.length > 0
-        ? reasons.join(" ")
-        : (riskScore >= 70 ? "This email shows strong spam or phishing signals." : "No major spam indicators were detected.");
-
-    const backendDangerous = result.label === "Dangerous" || riskScore >= 75;
-    const backendSuspicious = riskScore >= 65 || reasons.length > 0;
-    const isSpam = backendDangerous || backendSuspicious;
-
-    return {
-        label: result.label || "Analyzed",
-        risk_score: riskScore,
-        confidence,
-        reasons,
-        keywords: rawKeywords,
-        isSpam,
-        explanation: intentSummary,
-        intentSummary,
-        warningMessage: reasons[0] || "",
-        suggestedFilter: backendDangerous ? "Move to Spam / Quarantine" : (backendSuspicious ? "Review before trusting" : "Keep in Inbox"),
-        contributingKeywords,
-        emailText
-    };
-}
-
-function getLocalPreviewAnalysis(email) {
-    const emailText = `${email.subject || ""} ${email.snippet || ""}`.trim() || "No content";
-    const sender = email.sender || "";
+function collectLocalSignals(emailText, sender = "") {
     const matches = [];
     let score = 15;
 
     for (const item of LOCAL_SPAM_PATTERNS) {
         if (item.pattern.test(emailText)) {
-            score += item.score;
             matches.push(item);
+            score += item.score;
         }
     }
 
@@ -173,26 +134,102 @@ function getLocalPreviewAnalysis(email) {
         score += 10;
     }
 
-    if (matches.some((item) => /lottery|winner|won|prize/i.test(item.reason)) &&
-        matches.some((item) => /bank|identity|payment/i.test(item.reason))) {
+    if (
+        matches.some((item) => /lottery|winner|won|prize/i.test(item.reason)) &&
+        matches.some((item) => /bank|identity|payment/i.test(item.reason))
+    ) {
         score += 20;
     }
 
     score = Math.max(5, Math.min(score, 98));
-    const isSpam = score >= 45;
+    return { score, matches };
+}
+
+function buildKeywordList(rawKeywords, localMatches) {
+    const keywords = rawKeywords.map((keyword) => {
+        if (typeof keyword === "string") {
+            return { word: keyword, importance: 0.5 };
+        }
+
+        return {
+            word: keyword.word || "",
+            importance: typeof keyword.importance === "number" ? keyword.importance : 0.5
+        };
+    }).filter((keyword) => keyword.word);
+
+    localMatches.forEach((item) => {
+        const word = item.reason.replace(/\.$/, "");
+        if (!keywords.some((keyword) => keyword.word === word)) {
+            keywords.push({
+                word,
+                importance: item.score / 100
+            });
+        }
+    });
+
+    return keywords.slice(0, 6);
+}
+
+function normalizePrediction(result, emailText, sender = "") {
+    const backendRiskScore = Number(result.risk_score) || 0;
+    const backendReasons = Array.isArray(result.reasons) ? result.reasons : [];
+    const rawKeywords = Array.isArray(result.keywords) ? result.keywords : [];
+    const localSignals = collectLocalSignals(emailText, sender);
+
+    const riskScore = Math.max(
+        backendRiskScore,
+        localSignals.score >= 45 ? localSignals.score : backendRiskScore
+    );
+
+    const reasons = [...new Set([
+        ...backendReasons,
+        ...localSignals.matches.map((item) => item.reason)
+    ])];
+
+    const contributingKeywords = buildKeywordList(rawKeywords, localSignals.matches);
+
+    const intentSummary = reasons.length > 0
+        ? reasons.join(" ")
+        : (riskScore >= 70 ? "This email shows strong spam or phishing signals." : "No major spam indicators were detected.");
+
+    const dangerous = result.label === "Dangerous" || riskScore >= 75;
+    const suspicious = riskScore >= 45 || reasons.length > 0;
+    const isSpam = dangerous || suspicious;
 
     return {
-        label: isSpam ? (score >= 75 ? "Dangerous" : "Suspicious") : "Safe",
-        risk_score: score,
-        confidence: score / 100,
-        reasons: matches.slice(0, 2).map((item) => item.reason),
-        keywords: matches.slice(0, 4).map((item) => item.reason.replace(/\.$/, "")),
+        label: dangerous ? "Dangerous" : (isSpam ? "Suspicious" : "Safe"),
+        risk_score: riskScore,
+        confidence: riskScore / 100,
+        reasons,
+        keywords: rawKeywords,
         isSpam,
-        explanation: matches.length > 0 ? matches[0].reason : "No major spam indicators were detected.",
-        intentSummary: matches.length > 0 ? matches.map((item) => item.reason).join(" ") : "No major spam indicators were detected.",
-        warningMessage: matches[0]?.reason || "",
+        explanation: intentSummary,
+        intentSummary,
+        warningMessage: reasons[0] || "",
+        suggestedFilter: dangerous ? "Move to Spam / Quarantine" : (isSpam ? "Review before trusting" : "Keep in Inbox"),
+        contributingKeywords,
+        emailText
+    };
+}
+
+function getLocalPreviewAnalysis(email) {
+    const emailText = `${email.subject || ""} ${email.snippet || ""}`.trim() || "No content";
+    const sender = email.sender || "";
+    const localSignals = collectLocalSignals(emailText, sender);
+    const isSpam = localSignals.score >= 45;
+
+    return {
+        label: isSpam ? (localSignals.score >= 75 ? "Dangerous" : "Suspicious") : "Safe",
+        risk_score: localSignals.score,
+        confidence: localSignals.score / 100,
+        reasons: localSignals.matches.slice(0, 2).map((item) => item.reason),
+        keywords: localSignals.matches.slice(0, 4).map((item) => item.reason.replace(/\.$/, "")),
+        isSpam,
+        explanation: localSignals.matches.length > 0 ? localSignals.matches[0].reason : "No major spam indicators were detected.",
+        intentSummary: localSignals.matches.length > 0 ? localSignals.matches.map((item) => item.reason).join(" ") : "No major spam indicators were detected.",
+        warningMessage: localSignals.matches[0]?.reason || "",
         suggestedFilter: isSpam ? "Review before opening" : "Keep in Inbox",
-        contributingKeywords: matches.slice(0, 4).map((item) => ({
+        contributingKeywords: localSignals.matches.slice(0, 4).map((item) => ({
             word: item.reason.replace(/\.$/, ""),
             importance: item.score / 100
         })),
@@ -223,7 +260,7 @@ async function getEmailAnalysis(email) {
 
     try {
         const result = await securePost("/predict", payload);
-        const normalized = normalizePrediction(result, emailText);
+        const normalized = normalizePrediction(result, emailText, email.sender || "");
         storeCachedAnalysis(emailText, analysisMode, normalized);
         return normalized;
     } catch (error) {
