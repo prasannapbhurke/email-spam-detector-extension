@@ -111,9 +111,15 @@ const UI = {
         const cell = row.querySelector(".y6");
         if (!cell || row.querySelector(".spam-badge")) return;
 
+        if (data.previewOnly && !data.isSpam) {
+            return;
+        }
+
         const badge = document.createElement("span");
         badge.className = `spam-badge ${data.isSpam ? 'high' : 'low'}`;
-        badge.textContent = data.isSpam ? 'Suspicious' : 'Safe';
+        badge.textContent = data.previewOnly
+            ? (data.isSpam ? 'Review' : 'Scanned')
+            : (data.isSpam ? 'Suspicious' : 'Safe');
         cell.appendChild(badge);
 
         if (data.isSpam) {

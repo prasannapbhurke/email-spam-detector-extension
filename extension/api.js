@@ -157,7 +157,8 @@ function getLocalPreviewAnalysis(email) {
             importance: item.score / 100
         })),
         emailText,
-        analysisSource: "local-preview"
+        analysisSource: "local-preview",
+        previewOnly: true
     };
 }
 
