@@ -2,42 +2,50 @@
 const API_BASE_URL = "https://web-production-edebc.up.railway.app";
 const API_KEY = "dev-secret-key-12345";
 
+// Request Queue to prevent flooding the server
+let requestQueue = Promise.resolve();
+
 async function securePost(endpoint, body) {
-    const controller = new AbortController();
-    // 30 seconds for cloud cold start + transformer loading
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    // Chain the request to the queue (One at a time)
+    return requestQueue = requestQueue.then(async () => {
+        const controller = new AbortController();
+        // 45 seconds for cloud cold-start (model download + load)
+        const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-    try {
-        console.log(`📡 AI Assistant: Sending request to ${endpoint}...`);
-        const response = await fetch(API_BASE_URL + endpoint, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-API-Key": API_KEY
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal
-        });
+        try {
+            console.log(`📡 AI Assistant: Processing ${endpoint}...`);
+            const response = await fetch(API_BASE_URL + endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-API-Key": API_KEY
+                },
+                body: JSON.stringify(body),
+                signal: controller.signal
+            });
 
-        if (!response.ok) {
-            const text = await response.text();
-            console.error(`❌ API Error (${response.status}):`, text);
-            throw new Error(`HTTP ${response.status}`);
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`❌ API Error (${response.status}):`, text);
+                throw new Error(`HTTP ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log(`✅ AI Assistant: Done.`);
+            return data;
+        } catch (err) {
+            if (err.name === "AbortError") {
+                console.warn("⏳ AI Assistant: Server is taking too long to load AI. Cloud model is still waking up.");
+            } else {
+                console.error("🌐 AI Assistant: Network error.", err);
+            }
+            throw err;
+        } finally {
+            clearTimeout(timeoutId);
+            // Wait 500ms between requests to be polite to Railway's CPU
+            await new Promise(r => setTimeout(r, 500));
         }
-
-        const data = await response.json();
-        console.log(`✅ AI Assistant: Received response from ${endpoint}`);
-        return data;
-    } catch (err) {
-        if (err.name === "AbortError") {
-            console.warn("⏳ AI Assistant: Request timed out. Cloud model is still waking up.");
-        } else {
-            console.error("🌐 AI Assistant: Network error.", err);
-        }
-        throw err;
-    } finally {
-        clearTimeout(timeoutId);
-    }
+    });
 }
 
 async function getEmailAnalysis(email) {

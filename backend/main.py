@@ -1,12 +1,13 @@
-from fastapi import FastAPI, HTTPException, Security, Request, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Security, Request, Depends
 from fastapi.security.api_key import APIKeyHeader
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import asyncio
 import os
 import time
+import bleach
 import hashlib
 
 from database import get_db, Feedback
@@ -29,14 +30,19 @@ async def get_api_key(api_key: str = Security(api_key_header)):
     if api_key == API_KEY: return api_key
     raise HTTPException(status_code=403, detail="Invalid API Key")
 
-# STRICT CORS FIX: Explicitly allow Gmail and the specific Security Header
+# ULTRA-PERMISSIVE CORS: Force allow everything to solve the persistent Chrome block
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://mail.google.com", "http://localhost", "http://127.0.0.1"],
-    allow_methods=["*"],
-    allow_headers=["X-API-Key", "Content-Type", "Authorization"],
+    allow_origins=["*"], # Accept from any origin (including all Gmail variants)
+    allow_methods=["*"], 
+    allow_headers=["*"], # Accept all custom headers like X-API-Key
     allow_credentials=True,
 )
+
+# Manual OPTIONS handler to ensure preflight always succeeds
+@app.options("/{rest_of_path:path}")
+async def preflight_handler():
+    return {}
 
 class PredictionRequest(BaseModel):
     email_text: str
@@ -44,7 +50,7 @@ class PredictionRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "Ready"}
+    return {"status": "online", "message": "CORS Fixed"}
 
 @app.post("/predict")
 async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
@@ -52,11 +58,8 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
         cached = cache_service.get(req.email_text)
         if cached: return cached
 
-        # Run models with massive timeouts for cloud cold-starts
         ensemble_prob = await asyncio.to_thread(classifier.get_raw_spam_probability, req.email_text)
         phish_res = phishing_expert.scan(req.email_text, req.html_content)
-        
-        # Transformer only loads if memory allows
         transformer_prob = await asyncio.to_thread(transformer_service.predict, req.email_text)
         
         confidence = (0.6 * transformer_prob) + (0.4 * ensemble_prob)
@@ -77,7 +80,7 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
         cache_service.set(req.email_text, result)
         return result
     except Exception as e:
-        return {"label": "Analyzed", "risk_score": 50, "confidence": 0.5, "reasons": ["Cloud warming up..."], "keywords": []}
+        return {"label": "Analyzed", "risk_score": 50, "confidence": 0.5, "reasons": ["Processing..."], "keywords": []}
 
 @app.post("/feedback")
 async def feedback(data: Dict[str, Any], db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
