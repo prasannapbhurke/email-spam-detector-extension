@@ -13,3 +13,10 @@ slowapi
 bleach
 python-dotenv
 requests
+sqlalchemy
+psycopg2-binary
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+redis
+cachetools
