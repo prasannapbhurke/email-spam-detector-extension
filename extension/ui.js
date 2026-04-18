@@ -3,14 +3,36 @@
  */
 
 const UI = {
+    getPanelState(data) {
+        if (data.risk_score >= 75) {
+            return {
+                panelClass: "warning",
+                title: "High Risk Intent"
+            };
+        }
+
+        if (data.isSpam) {
+            return {
+                panelClass: "warning",
+                title: "Needs Review"
+            };
+        }
+
+        return {
+            panelClass: "safe",
+            title: "Trusted Intent"
+        };
+    },
+
     injectFloatingPanel(container, data, emailObj) {
         if (document.getElementById("spam-floating-panel")) {
             document.getElementById("spam-floating-panel").remove();
         }
 
+        const panelState = this.getPanelState(data);
         const panel = document.createElement("div");
         panel.id = "spam-floating-panel";
-        panel.className = `spam-panel-floating ${data.isSpam ? 'warning' : 'safe'}`;
+        panel.className = `spam-panel-floating ${panelState.panelClass}`;
 
         const warningBox = data.warningMessage ?
             `<div style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; margin-top: 10px; border: 1px solid #ffeeba; font-size: 13px;">
@@ -21,7 +43,7 @@ const UI = {
             <div class="spam-panel-header">
                 <div>
                     <div class="spam-panel-kicker">AI SECURITY ANALYSIS</div>
-                    <div class="spam-panel-title">${data.isSpam ? 'High Risk Intent' : 'Trusted Intent'}</div>
+                    <div class="spam-panel-title">${panelState.title}</div>
                 </div>
                 <div class="spam-panel-score">${Math.round(data.confidence * 100)}%</div>
             </div>
@@ -112,12 +134,10 @@ const UI = {
         if (!cell || row.querySelector(".spam-badge")) return;
 
         const badge = document.createElement("span");
-        const badgeLevel = data.previewOnly
-            ? (data.isSpam ? 'high' : 'neutral')
-            : (data.isSpam ? 'high' : 'low');
+        const badgeLevel = data.isSpam ? 'high' : 'low';
         badge.className = `spam-badge ${badgeLevel}`;
         badge.textContent = data.previewOnly
-            ? (data.isSpam ? 'Review' : 'Checked')
+            ? (data.isSpam ? 'Review' : 'Safe')
             : (data.isSpam ? 'Suspicious' : 'Safe');
         cell.appendChild(badge);
 

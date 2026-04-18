@@ -4,11 +4,29 @@ const API_KEY = "dev-secret-key-12345";
 let requestQueue = Promise.resolve();
 const analysisCache = new Map();
 const MAX_CACHE_SIZE = 300;
+const TRUSTED_SENDER_PATTERNS = [
+    /@google\.com$/i,
+    /@github\.com$/i,
+    /@stripe\.com$/i,
+    /@railway\.app$/i,
+    /@kaggle\.com$/i,
+    /@claude\.ai$/i,
+    /@anthropic\.com$/i,
+    /@microsoft\.com$/i,
+    /@nvidia\.com$/i,
+    /@heroku\.com$/i
+];
 const LOCAL_SPAM_PATTERNS = [
+    { pattern: /\bcongratulations\b/i, score: 14, reason: "Prize-style congratulations wording detected." },
+    { pattern: /\byou won\b/i, score: 26, reason: "Winning-claim wording detected." },
+    { pattern: /₹\s?\d[\d,]*/i, score: 24, reason: "Large money prize amount detected." },
+    { pattern: /\bselected as a winner\b/i, score: 24, reason: "Winner selection wording detected." },
+    { pattern: /\binternational lottery\b/i, score: 28, reason: "Lottery scam wording detected." },
     { pattern: /\blottery\b/i, score: 22, reason: "Lottery claim language detected." },
     { pattern: /\bclaim\b.{0,20}\bprize\b/i, score: 18, reason: "Prize-claim wording detected." },
     { pattern: /\bbank details\b/i, score: 24, reason: "Requests for bank details are high risk." },
     { pattern: /\bid proof\b/i, score: 18, reason: "Sensitive identity document request detected." },
+    { pattern: /\bpayment details\b/i, score: 18, reason: "Payment detail request detected." },
     { pattern: /\bverify\b.{0,20}\baccount\b/i, score: 16, reason: "Account verification wording detected." },
     { pattern: /\burgent\b/i, score: 10, reason: "Urgent pressure language detected." },
     { pattern: /\bwinner\b/i, score: 12, reason: "Winner notification wording detected." },
@@ -110,17 +128,21 @@ function normalizePrediction(result, emailText) {
         ? reasons.join(" ")
         : (riskScore >= 70 ? "This email shows strong spam or phishing signals." : "No major spam indicators were detected.");
 
+    const backendDangerous = result.label === "Dangerous" || riskScore >= 75;
+    const backendSuspicious = riskScore >= 65 || reasons.length > 0;
+    const isSpam = backendDangerous || backendSuspicious;
+
     return {
         label: result.label || "Analyzed",
         risk_score: riskScore,
         confidence,
         reasons,
         keywords: rawKeywords,
-        isSpam: riskScore >= 50 || result.label === "Suspicious" || result.label === "Dangerous",
+        isSpam,
         explanation: intentSummary,
         intentSummary,
         warningMessage: reasons[0] || "",
-        suggestedFilter: riskScore >= 70 ? "Move to Spam / Quarantine" : "Keep in Inbox",
+        suggestedFilter: backendDangerous ? "Move to Spam / Quarantine" : (backendSuspicious ? "Review before trusting" : "Keep in Inbox"),
         contributingKeywords,
         emailText
     };
@@ -128,14 +150,32 @@ function normalizePrediction(result, emailText) {
 
 function getLocalPreviewAnalysis(email) {
     const emailText = `${email.subject || ""} ${email.snippet || ""}`.trim() || "No content";
+    const sender = email.sender || "";
     const matches = [];
-    let score = 8;
+    let score = 15;
 
     for (const item of LOCAL_SPAM_PATTERNS) {
         if (item.pattern.test(emailText)) {
             score += item.score;
             matches.push(item);
         }
+    }
+
+    if (TRUSTED_SENDER_PATTERNS.some((pattern) => pattern.test(sender))) {
+        score -= 20;
+    }
+
+    if (/\bsecurity alert\b/i.test(emailText) && TRUSTED_SENDER_PATTERNS.some((pattern) => pattern.test(sender))) {
+        score -= 10;
+    }
+
+    if (matches.length >= 2) {
+        score += 10;
+    }
+
+    if (matches.some((item) => /lottery|winner|won|prize/i.test(item.reason)) &&
+        matches.some((item) => /bank|identity|payment/i.test(item.reason))) {
+        score += 20;
     }
 
     score = Math.max(5, Math.min(score, 98));

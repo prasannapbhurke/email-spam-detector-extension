@@ -74,15 +74,6 @@ function scheduleOpenedEmailCheck() {
     });
 }
 
-function rowLooksWorthAnalyzing(row, subject, snippet) {
-    if (row.classList.contains("zE")) {
-        return true;
-    }
-
-    const previewText = `${subject} ${snippet}`.toLowerCase();
-    return /(urgent|winner|lottery|bank|verify|account|prize|claim|suspended|gift|otp|password|refund)/.test(previewText);
-}
-
 async function processEmailRow(row) {
     if (row.dataset.analysisStarted === "true") {
         return;
@@ -92,11 +83,6 @@ async function processEmailRow(row) {
                    row.querySelector('.bA4')?.innerText || "";
     const subject = row.querySelector('.bog')?.innerText || "";
     const snippet = row.querySelector('.y2')?.innerText || "";
-
-    if (!rowLooksWorthAnalyzing(row, subject, snippet)) {
-        row.dataset.analysisSkipped = "true";
-        return;
-    }
 
     row.dataset.analysisStarted = "true";
 
