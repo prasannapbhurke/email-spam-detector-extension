@@ -38,6 +38,13 @@ const LOCAL_SPAM_PATTERNS = [
     { pattern: /\brefund\b/i, score: 10, reason: "Refund lure wording detected." }
 ];
 
+function getSignatureForLearning(email) {
+    const subject = (email.subject || "").trim().toLowerCase();
+    const bodyStart = `${email.body || ""}`.trim().toLowerCase().slice(0, 120);
+    const snippetStart = `${email.snippet || ""}`.trim().toLowerCase().slice(0, 120);
+    return `${subject}::${bodyStart || snippetStart}`;
+}
+
 function getErrorMessage(error) {
     if (error instanceof Error && error.message) {
         return error.message;
@@ -239,17 +246,86 @@ function getLocalPreviewAnalysis(email) {
     };
 }
 
+async function getLearnedVerdict(email) {
+    if (!globalThis.chrome?.storage?.local) {
+        return null;
+    }
+
+    const signature = getSignatureForLearning(email);
+    if (!signature.trim()) {
+        return null;
+    }
+
+    const stored = await chrome.storage.local.get(["learnedVerdicts"]);
+    const learnedVerdicts = Array.isArray(stored.learnedVerdicts) ? stored.learnedVerdicts : [];
+    const exactMatch = learnedVerdicts.find((entry) => entry.signature === signature);
+    if (exactMatch) {
+        return exactMatch.verdict;
+    }
+
+    const [subject, textStart] = signature.split("::");
+    for (const entry of learnedVerdicts) {
+        const [savedSubject, savedTextStart] = `${entry.signature || ""}`.split("::");
+        const subjectMatches = savedSubject && subject && savedSubject === subject;
+        const textMatches = savedTextStart && textStart && (savedTextStart.includes(textStart.slice(0, 40)) || textStart.includes(savedTextStart.slice(0, 40)));
+        if (subjectMatches || textMatches) {
+            return entry.verdict;
+        }
+    }
+
+    return null;
+}
+
+function applyLearnedVerdict(result, verdict) {
+    if (!verdict) {
+        return result;
+    }
+
+    if (verdict === "spam") {
+        return {
+            ...result,
+            label: "Dangerous",
+            risk_score: Math.max(result.risk_score || 0, 90),
+            confidence: Math.max(result.confidence || 0, 0.9),
+            isSpam: true,
+            reasons: [...new Set(["User quarantined this email as spam.", ...(result.reasons || [])])],
+            explanation: "User quarantined this email as spam.",
+            intentSummary: "User quarantined this email as spam.",
+            warningMessage: "User quarantined this email as spam.",
+            suggestedFilter: "Move to Spam / Quarantine"
+        };
+    }
+
+    if (verdict === "safe") {
+        return {
+            ...result,
+            label: "Safe",
+            risk_score: Math.min(result.risk_score || 100, 15),
+            confidence: 0.15,
+            isSpam: false,
+            reasons: ["User marked this email as safe."],
+            explanation: "User marked this email as safe.",
+            intentSummary: "User marked this email as safe.",
+            warningMessage: "",
+            suggestedFilter: "Keep in Inbox"
+        };
+    }
+
+    return result;
+}
+
 async function getEmailAnalysis(email) {
     const emailText = `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content";
     const analysisMode = email.analysisMode === "preview" ? "preview" : "full";
+    const learnedVerdict = await getLearnedVerdict(email);
 
     if (analysisMode === "preview") {
-        return getLocalPreviewAnalysis(email);
+        return applyLearnedVerdict(getLocalPreviewAnalysis(email), learnedVerdict);
     }
 
     const cached = readCachedAnalysis(emailText, analysisMode);
     if (cached) {
-        return cached;
+        return applyLearnedVerdict(cached, learnedVerdict);
     }
 
     const payload = {
@@ -262,7 +338,7 @@ async function getEmailAnalysis(email) {
         const result = await securePost("/predict", payload);
         const normalized = normalizePrediction(result, emailText, email.sender || "");
         storeCachedAnalysis(emailText, analysisMode, normalized);
-        return normalized;
+        return applyLearnedVerdict(normalized, learnedVerdict);
     } catch (error) {
         console.error("Spam analysis failed:", getErrorMessage(error), error);
         return null;

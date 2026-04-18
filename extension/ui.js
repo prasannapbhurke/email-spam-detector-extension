@@ -19,9 +19,10 @@ const UI = {
             return;
         }
 
-        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems"]);
+        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems", "learnedVerdicts"]);
         const quarantinedEmails = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
         const quarantineItems = Array.isArray(current.quarantineItems) ? current.quarantineItems : [];
+        const learnedVerdicts = Array.isArray(current.learnedVerdicts) ? current.learnedVerdicts : [];
         if (!quarantinedEmails.includes(signature)) {
             quarantinedEmails.push(signature);
         }
@@ -36,25 +37,46 @@ const UI = {
         const filteredItems = quarantineItems.filter((entry) => entry.signature !== signature);
         filteredItems.unshift(item);
 
+        const filteredVerdicts = learnedVerdicts.filter((entry) => entry.signature !== signature);
+        filteredVerdicts.unshift({
+            signature,
+            verdict: "spam",
+            updatedAt: new Date().toISOString()
+        });
+
         await chrome.storage.local.set({
             quarantinedEmails: quarantinedEmails.slice(-200),
-            quarantineItems: filteredItems.slice(0, 100)
+            quarantineItems: filteredItems.slice(0, 100),
+            learnedVerdicts: filteredVerdicts.slice(0, 300)
         });
     },
 
-    async clearQuarantineSignature(emailObj) {
+    async persistSafeVerdict(emailObj) {
         if (!globalThis.chrome?.storage?.local) {
             return;
         }
 
         const signature = this.getQuarantineSignature(emailObj);
-        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems"]);
+        if (!signature.trim()) {
+            return;
+        }
+
+        const current = await chrome.storage.local.get(["quarantinedEmails", "quarantineItems", "learnedVerdicts"]);
         const quarantinedEmails = Array.isArray(current.quarantinedEmails) ? current.quarantinedEmails : [];
         const quarantineItems = Array.isArray(current.quarantineItems) ? current.quarantineItems : [];
+        const learnedVerdicts = Array.isArray(current.learnedVerdicts) ? current.learnedVerdicts : [];
+
+        const filteredVerdicts = learnedVerdicts.filter((entry) => entry.signature !== signature);
+        filteredVerdicts.unshift({
+            signature,
+            verdict: "safe",
+            updatedAt: new Date().toISOString()
+        });
 
         await chrome.storage.local.set({
             quarantinedEmails: quarantinedEmails.filter((value) => value !== signature),
-            quarantineItems: quarantineItems.filter((entry) => entry.signature !== signature)
+            quarantineItems: quarantineItems.filter((entry) => entry.signature !== signature),
+            learnedVerdicts: filteredVerdicts.slice(0, 300)
         });
     },
 
@@ -140,7 +162,7 @@ const UI = {
 
         panel.querySelector("#btn-mark-safe").onclick = () => {
             sendFeedback(emailObj, false);
-            this.clearQuarantineSignature(emailObj);
+            this.persistSafeVerdict(emailObj);
             this.clearHighlights();
             panel.remove();
         };

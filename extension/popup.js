@@ -70,7 +70,7 @@ async function renderQuarantineList() {
                     <div class="quarantine-item-preview">${item.preview || "No preview available."}</div>
                     <div class="quarantine-item-meta">Quarantined: ${formatQuarantineTime(item.quarantinedAt)}</div>
                     <div class="quarantine-actions">
-                        <button class="btn btn-clear" data-action="remove" data-signature="${item.signature}" type="button">Remove Hide</button>
+                        <button class="btn btn-clear" data-action="remove" data-signature="${item.signature}" type="button">Unhide Only</button>
                     </div>
                 </div>
             `).join("")}
