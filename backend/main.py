@@ -1,13 +1,10 @@
 from fastapi import FastAPI, HTTPException, Security, Request, Depends, Response
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any
 import asyncio
 import os
-import time
-import hashlib
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from database import get_db, Feedback
@@ -49,6 +46,12 @@ async def get_api_key(api_key: str = Security(api_key_header)):
 class PredictionRequest(BaseModel):
     email_text: str
     html_content: str = ""
+    analysis_mode: str = "full"
+
+
+@app.on_event("startup")
+async def startup_event():
+    await asyncio.to_thread(classifier.load)
 
 @app.get("/")
 async def root():
@@ -65,14 +68,24 @@ async def health():
 @app.post("/predict")
 async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
     try:
-        cached = cache_service.get(req.email_text)
-        if cached: return cached
+        analysis_mode = req.analysis_mode if req.analysis_mode in {"preview", "full"} else "full"
+        cache_key = f"{analysis_mode}:{req.email_text}"
+        cached = cache_service.get(cache_key)
+        if cached:
+            return cached
 
         ensemble_prob = await asyncio.to_thread(classifier.get_raw_spam_probability, req.email_text)
         phish_res = phishing_expert.scan(req.email_text, req.html_content)
-        transformer_prob = await asyncio.to_thread(transformer_service.predict, req.email_text)
-        
-        confidence = (0.6 * transformer_prob) + (0.4 * ensemble_prob)
+        transformer_prob = 0.5
+
+        if analysis_mode == "full" and len(req.email_text) > 80:
+            transformer_prob = await asyncio.to_thread(transformer_service.predict, req.email_text)
+
+        if analysis_mode == "preview":
+            confidence = ensemble_prob
+        else:
+            confidence = (0.6 * transformer_prob) + (0.4 * ensemble_prob)
+
         if phish_res.get("isPhishing"):
             confidence = max(confidence, phish_res.get("phishingScore", 0))
         
@@ -84,10 +97,11 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
             "risk_score": risk_score,
             "confidence": round(float(confidence), 4),
             "reasons": phish_res.get("reasons", []),
-            "keywords": [k["word"] for k in classifier.get_explainability_weights(req.email_text)] if classifier.model else []
+            "keywords": [k["word"] for k in classifier.get_explainability_weights(req.email_text)] if classifier.model else [],
+            "analysis_mode": analysis_mode
         }
 
-        cache_service.set(req.email_text, result)
+        cache_service.set(cache_key, result)
         return result
     except Exception as e:
         return {"label": "Analyzed", "risk_score": 50, "confidence": 0.5, "reasons": ["Processing..."], "keywords": []}

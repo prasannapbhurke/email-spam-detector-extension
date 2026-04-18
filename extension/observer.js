@@ -1,13 +1,15 @@
 const intersectionObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
+    entries.forEach((entry) => {
         if (entry.isIntersecting) {
             processEmailRow(entry.target);
             intersectionObserver.unobserve(entry.target);
         }
     });
-}, { threshold: 0.1 });
+}, { threshold: 0.15, rootMargin: "120px 0px" });
 
 let observerStarted = false;
+let inboxScanScheduled = false;
+let lastOpenedEmailKey = "";
 
 function startObserving() {
     if (observerStarted) {
@@ -15,75 +17,125 @@ function startObserving() {
     }
     observerStarted = true;
 
+    scheduleInboxScan();
+
     const observer = new MutationObserver(() => {
-        // 1. Process Inbox Rows
-        const rows = document.querySelectorAll('tr[role="row"]');
-        rows.forEach(row => {
-            if (!row.dataset.observed) {
-                row.dataset.observed = "true";
-                intersectionObserver.observe(row);
-            }
-        });
-
-        // 2. Detect Opened Email (Improved for Single Page App transitions)
-        const currentHash = window.location.hash;
-        const bodySelectors = ['.ii.gt', '.a3s.aiL', '.ads', '[role="main"] .adP'];
-        let activeBody = null;
-
-        for (const selector of bodySelectors) {
-            const el = document.querySelector(selector);
-            if (el && el.offsetHeight > 0 && el.innerText.length > 20) {
-                activeBody = el;
-                break;
-            }
-        }
-
-        if (activeBody) {
-            // Check if we've switched emails or haven't processed this one yet
-            if (activeBody.getAttribute('data-last-hash') !== currentHash) {
-                activeBody.setAttribute('data-last-hash', currentHash);
-                processOpenedEmail(activeBody);
-            }
-        }
+        scheduleInboxScan();
+        scheduleOpenedEmailCheck();
     });
 
     observer.observe(document.body, { childList: true, subtree: true });
 }
 
+function scheduleInboxScan() {
+    if (inboxScanScheduled) {
+        return;
+    }
+
+    inboxScanScheduled = true;
+    setTimeout(() => {
+        inboxScanScheduled = false;
+        const rows = document.querySelectorAll('tr[role="row"]');
+        rows.forEach((row) => {
+            if (!row.dataset.observed) {
+                row.dataset.observed = "true";
+                intersectionObserver.observe(row);
+            }
+        });
+    }, 250);
+}
+
+function scheduleOpenedEmailCheck() {
+    requestAnimationFrame(() => {
+        const currentHash = window.location.hash;
+        const bodySelectors = ['.ii.gt', '.a3s.aiL', '.ads', '[role="main"] .adP'];
+        let activeBody = null;
+
+        for (const selector of bodySelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.offsetHeight > 0 && element.innerText.trim().length > 40) {
+                activeBody = element;
+                break;
+            }
+        }
+
+        if (!activeBody) {
+            return;
+        }
+
+        const subject = document.querySelector('h2.hP')?.innerText || "Email Analysis";
+        const bodyText = activeBody.innerText.trim();
+        const emailKey = `${currentHash}::${subject}::${bodyText.slice(0, 120)}`;
+
+        if (emailKey !== lastOpenedEmailKey) {
+            lastOpenedEmailKey = emailKey;
+            processOpenedEmail(activeBody, subject, bodyText, currentHash);
+        }
+    });
+}
+
+function rowLooksWorthAnalyzing(row, subject, snippet) {
+    if (row.classList.contains("zE")) {
+        return true;
+    }
+
+    const previewText = `${subject} ${snippet}`.toLowerCase();
+    return /(urgent|winner|lottery|bank|verify|account|prize|claim|suspended|gift|otp|password|refund)/.test(previewText);
+}
+
 async function processEmailRow(row) {
+    if (row.dataset.analysisStarted === "true") {
+        return;
+    }
+
     const sender = row.querySelector('.zF')?.getAttribute('email') ||
                    row.querySelector('.bA4')?.innerText || "";
     const subject = row.querySelector('.bog')?.innerText || "";
     const snippet = row.querySelector('.y2')?.innerText || "";
-    const id = row.id || subject + sender;
 
-    const data = await getEmailAnalysis({ id, subject, sender, snippet });
+    if (!rowLooksWorthAnalyzing(row, subject, snippet)) {
+        row.dataset.analysisSkipped = "true";
+        return;
+    }
+
+    row.dataset.analysisStarted = "true";
+
+    const data = await getEmailAnalysis({
+        id: row.id || subject + sender,
+        subject,
+        sender,
+        snippet,
+        analysisMode: "preview"
+    });
+
     if (data) {
         injectBadgeToRow(row, data);
     }
 }
 
-async function processOpenedEmail(container) {
-    const bodyText = container.innerText;
-    const subject = document.querySelector('h2.hP')?.innerText || "Email Analysis";
-    const id = window.location.hash;
+async function processOpenedEmail(container, subject, bodyText, hash) {
+    const emailObj = {
+        id: hash,
+        subject,
+        body: bodyText,
+        analysisMode: "full"
+    };
 
-    const emailObj = { id, subject, body: bodyText };
     const data = await getEmailAnalysis(emailObj);
-
-    if (data) {
-        // Search for Gmail headers where we can dock the panel
-        const headerSelectors = ['.gE.iv.gt', '.acZ', '.hx', '.h7', '.ha', '.iH'];
-        let injectionTarget = container;
-
-        for (const sel of headerSelectors) {
-            const header = document.querySelector(sel);
-            if (header && header.offsetHeight > 0) {
-                injectionTarget = header;
-                break;
-            }
-        }
-
-        injectTopPanel(injectionTarget, data, emailObj);
+    if (!data) {
+        return;
     }
+
+    const headerSelectors = ['.gE.iv.gt', '.acZ', '.hx', '.h7', '.ha', '.iH'];
+    let injectionTarget = container;
+
+    for (const selector of headerSelectors) {
+        const header = document.querySelector(selector);
+        if (header && header.offsetHeight > 0) {
+            injectionTarget = header;
+            break;
+        }
+    }
+
+    injectTopPanel(injectionTarget, data, emailObj);
 }

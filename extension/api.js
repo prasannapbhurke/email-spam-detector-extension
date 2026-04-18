@@ -2,6 +2,8 @@ const API_BASE_URL = "https://web-production-edebc.up.railway.app";
 const API_KEY = "dev-secret-key-12345";
 
 let requestQueue = Promise.resolve();
+const analysisCache = new Map();
+const MAX_CACHE_SIZE = 300;
 
 function getErrorMessage(error) {
     if (error instanceof Error && error.message) {
@@ -59,6 +61,23 @@ async function securePost(endpoint, body) {
     return requestQueue;
 }
 
+function getCacheKey(emailText, analysisMode) {
+    return `${analysisMode}:${emailText}`;
+}
+
+function readCachedAnalysis(emailText, analysisMode) {
+    return analysisCache.get(getCacheKey(emailText, analysisMode)) || null;
+}
+
+function storeCachedAnalysis(emailText, analysisMode, value) {
+    const key = getCacheKey(emailText, analysisMode);
+    if (analysisCache.size >= MAX_CACHE_SIZE) {
+        const oldestKey = analysisCache.keys().next().value;
+        analysisCache.delete(oldestKey);
+    }
+    analysisCache.set(key, value);
+}
+
 function normalizePrediction(result, emailText) {
     const riskScore = Number(result.risk_score) || 0;
     const confidence = typeof result.confidence === "number" ? result.confidence : riskScore / 100;
@@ -97,14 +116,23 @@ function normalizePrediction(result, emailText) {
 
 async function getEmailAnalysis(email) {
     const emailText = `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content";
+    const analysisMode = email.analysisMode === "preview" ? "preview" : "full";
+    const cached = readCachedAnalysis(emailText, analysisMode);
+    if (cached) {
+        return cached;
+    }
+
     const payload = {
         email_text: emailText,
-        html_content: email.body || ""
+        html_content: analysisMode === "full" ? (email.body || "") : "",
+        analysis_mode: analysisMode
     };
 
     try {
         const result = await securePost("/predict", payload);
-        return normalizePrediction(result, emailText);
+        const normalized = normalizePrediction(result, emailText);
+        storeCachedAnalysis(emailText, analysisMode, normalized);
+        return normalized;
     } catch (error) {
         console.error("Spam analysis failed:", getErrorMessage(error), error);
         return null;
