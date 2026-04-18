@@ -39,7 +39,7 @@ async function getEmailAnalysis(email) {
         subject: email.subject || "",
         sender: email.sender || "",
         snippet: email.snippet || "",
-        body: email.body || ""
+        body: email.body || "" // Full HTML body for phishing link mismatch detection
     };
 
     try {
@@ -50,7 +50,8 @@ async function getEmailAnalysis(email) {
             confidence: Number(result.confidence) || 0,
             explanation: result.explanation || "",
             technicalExplanation: result.technicalExplanation || "",
-            contributingKeywords: Array.isArray(result.contributingKeywords) ? result.contributingKeywords : []
+            contributingKeywords: Array.isArray(result.contributingKeywords) ? result.contributingKeywords : [],
+            phishingAnalysis: result.phishingAnalysis // New field
         };
     } catch (error) {
         console.error("Spam analysis failed:", getErrorMessage(error));
@@ -64,10 +65,8 @@ async function sendFeedback(emailObj, isActuallySpam) {
         text: `${emailObj.subject} ${emailObj.body}`,
         isActuallySpam: isActuallySpam
     };
-
     try {
         await securePost("/feedback", feedbackPayload);
-        console.log("Feedback logged successfully");
     } catch (error) {
         console.error("Feedback submission failed:", getErrorMessage(error));
     }

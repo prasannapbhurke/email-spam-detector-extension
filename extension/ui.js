@@ -39,7 +39,11 @@ const UI = {
     },
 
     injectFloatingPanel(container, data, emailObj) {
-        if (!container || document.getElementById("spam-floating-panel")) return;
+        // Prevent duplicate panels
+        if (document.getElementById("spam-floating-panel")) {
+            document.getElementById("spam-floating-panel").remove();
+        }
+
         const panel = document.createElement("div");
         const threat = this.getThreatLevel(data);
         const keywords = Array.isArray(data.contributingKeywords) ? data.contributingKeywords : [];
@@ -60,16 +64,25 @@ const UI = {
                 <button class="spam-btn spam-btn-report" id="btn-report-spam">Report Spam</button>
             </div>`;
 
-        container.prepend(panel);
+        // Gmail's dynamic loading can be tricky. Try to prepend to container, if fails, append to body
+        try {
+            container.prepend(panel);
+        } catch (e) {
+            document.body.appendChild(panel);
+            panel.style.position = 'fixed';
+            panel.style.top = '100px';
+            panel.style.right = '20px';
+            panel.style.zIndex = '9999';
+        }
 
         panel.querySelector("#btn-mark-safe").onclick = () => {
-            sendFeedback(emailObj, false); // False = Not Spam
+            sendFeedback(emailObj, false);
             this.clearHighlights();
             panel.remove();
         };
 
         panel.querySelector("#btn-report-spam").onclick = () => {
-            sendFeedback(emailObj, true); // True = Spam
+            sendFeedback(emailObj, true);
             panel.remove();
         };
 
@@ -77,7 +90,7 @@ const UI = {
     },
 
     highlightKeywords(keywords) {
-        const body = document.querySelector(".ii.gt");
+        const body = document.querySelector('.ii.gt') || document.querySelector('.a3s.aiL');
         if (!body) return;
         let html = body.innerHTML;
         keywords.forEach(kw => {

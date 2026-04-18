@@ -1,15 +1,15 @@
 const intersectionObserver = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
         if (entry.isIntersecting) {
-            const row = entry.target;
-            processEmailRow(row);
-            intersectionObserver.unobserve(row);
+            processEmailRow(entry.target);
+            intersectionObserver.unobserve(entry.target);
         }
     });
 }, { threshold: 0.1 });
 
-function startObservingInbox() {
-    const observer = new MutationObserver((mutations) => {
+function startObserving() {
+    const observer = new MutationObserver(() => {
+        // 1. Process Inbox Rows
         const rows = document.querySelectorAll('tr[role="row"]');
         rows.forEach(row => {
             if (!row.dataset.observed) {
@@ -18,9 +18,25 @@ function startObservingInbox() {
             }
         });
 
-        const emailBodyContainer = document.querySelector('.ii.gt');
-        if (emailBodyContainer && !emailBodyContainer.dataset.processed) {
-            processOpenedEmail(emailBodyContainer);
+        // 2. Detect Opened Email (Improved for Single Page App transitions)
+        const currentHash = window.location.hash;
+        const bodySelectors = ['.ii.gt', '.a3s.aiL', '.ads', '[role="main"] .adP'];
+        let activeBody = null;
+
+        for (const selector of bodySelectors) {
+            const el = document.querySelector(selector);
+            if (el && el.offsetHeight > 0 && el.innerText.length > 20) {
+                activeBody = el;
+                break;
+            }
+        }
+
+        if (activeBody) {
+            // Check if we've switched emails or haven't processed this one yet
+            if (activeBody.getAttribute('data-last-hash') !== currentHash) {
+                activeBody.setAttribute('data-last-hash', currentHash);
+                processOpenedEmail(activeBody);
+            }
         }
     });
 
@@ -41,19 +57,28 @@ async function processEmailRow(row) {
 }
 
 async function processOpenedEmail(container) {
-    container.dataset.processed = "true";
-
     const bodyText = container.innerText;
-    const subject = document.querySelector('h2.hP')?.innerText || "";
+    const subject = document.querySelector('h2.hP')?.innerText || "Email Analysis";
     const id = window.location.hash;
 
     const emailObj = { id, subject, body: bodyText };
     const data = await getEmailAnalysis(emailObj);
+
     if (data) {
-        const topContainer = document.querySelector('.gE.iv.gt') || container.parentElement;
-        // Pass the whole email object so feedback has the text
-        injectTopPanel(topContainer, data, emailObj);
+        // Search for Gmail headers where we can dock the panel
+        const headerSelectors = ['.gE.iv.gt', '.acZ', '.hx', '.h7', '.ha', '.iH'];
+        let injectionTarget = container;
+
+        for (const sel of headerSelectors) {
+            const header = document.querySelector(sel);
+            if (header && header.offsetHeight > 0) {
+                injectionTarget = header;
+                break;
+            }
+        }
+
+        injectTopPanel(injectionTarget, data, emailObj);
     }
 }
 
-startObservingInbox();
+startObserving();
