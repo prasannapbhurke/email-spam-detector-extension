@@ -8,6 +8,7 @@ import asyncio
 import os
 import time
 import hashlib
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from database import get_db, Feedback
 from cache_service import cache_service
@@ -20,7 +21,23 @@ load_dotenv()
 
 app = FastAPI(title="AI Email Assistant")
 
-# --- Security ---
+# --- CUSTOM CORS OVERRIDE MIDDLEWARE ---
+# This forces the headers even if standard middleware fails
+class ForceCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            response = Response()
+        else:
+            response = await call_next(request)
+        
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, DELETE, PUT"
+        response.headers["Access-Control-Allow-Headers"] = "X-API-Key, Content-Type, Authorization"
+        return response
+
+app.add_middleware(ForceCORSMiddleware)
+
+# --- Standard Security ---
 API_KEY = os.getenv("API_KEY", "dev-secret-key-12345")
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
@@ -29,45 +46,22 @@ async def get_api_key(api_key: str = Security(api_key_header)):
     if api_key == API_KEY: return api_key
     raise HTTPException(status_code=403, detail="Invalid API Key")
 
-# --- PROPER CORS FIX ---
-# Note: allow_credentials MUST be False when allow_origins is ["*"]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=False, 
-)
-
-# Robust Manual Preflight Handler
-@app.options("/{rest_of_path:path}")
-async def preflight_handler(request: Request):
-    response = Response()
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "*"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return response
-
 class PredictionRequest(BaseModel):
     email_text: str
     html_content: str = ""
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "Secure Bridge Active"}
+    return {"status": "online", "message": "CORS Overridden"}
 
 @app.post("/predict")
 async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
     try:
-        # Cache Check
         cached = cache_service.get(req.email_text)
         if cached: return cached
 
-        # Ensemble Logic
         ensemble_prob = await asyncio.to_thread(classifier.get_raw_spam_probability, req.email_text)
         phish_res = phishing_expert.scan(req.email_text, req.html_content)
-        
-        # Transformer Logic (Waking up cloud model)
         transformer_prob = await asyncio.to_thread(transformer_service.predict, req.email_text)
         
         confidence = (0.6 * transformer_prob) + (0.4 * ensemble_prob)
@@ -88,8 +82,7 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
         cache_service.set(req.email_text, result)
         return result
     except Exception as e:
-        print(f"Server Error: {e}")
-        return {"label": "Analyzed", "risk_score": 50, "confidence": 0.5, "reasons": ["AI system is optimizing..."], "keywords": []}
+        return {"label": "Analyzed", "risk_score": 50, "confidence": 0.5, "reasons": ["Processing..."], "keywords": []}
 
 @app.post("/feedback")
 async def feedback(data: Dict[str, Any], db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
