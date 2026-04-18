@@ -2,16 +2,13 @@
 const API_BASE_URL = "https://web-production-edebc.up.railway.app";
 const API_KEY = "dev-secret-key-12345";
 
-function getErrorMessage(error) {
-    if (error instanceof Error && error.message) return error.message;
-    return String(error);
-}
-
 async function securePost(endpoint, body) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s for production cold starts
+    // 30 seconds for cloud cold start + transformer loading
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
+        console.log(`📡 AI Assistant: Sending request to ${endpoint}...`);
         const response = await fetch(API_BASE_URL + endpoint, {
             method: "POST",
             headers: {
@@ -24,17 +21,26 @@ async function securePost(endpoint, body) {
 
         if (!response.ok) {
             const text = await response.text();
-            throw new Error(`HTTP ${response.status}: ${text}`);
+            console.error(`❌ API Error (${response.status}):`, text);
+            throw new Error(`HTTP ${response.status}`);
         }
 
-        return await response.json();
+        const data = await response.json();
+        console.log(`✅ AI Assistant: Received response from ${endpoint}`);
+        return data;
+    } catch (err) {
+        if (err.name === "AbortError") {
+            console.warn("⏳ AI Assistant: Request timed out. Cloud model is still waking up.");
+        } else {
+            console.error("🌐 AI Assistant: Network error.", err);
+        }
+        throw err;
     } finally {
         clearTimeout(timeoutId);
     }
 }
 
 async function getEmailAnalysis(email) {
-    // FIX: Ensure no 'undefined' strings are sent to the backend
     const payload = {
         email_text: `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content",
         html_content: email.body || ""
@@ -50,11 +56,10 @@ async function getEmailAnalysis(email) {
             keywords: result.keywords || [],
             // Mapping for UI backward compatibility
             isSpam: result.label !== "Safe",
-            explanation: result.reasons.join(". "),
-            contributingKeywords: result.keywords.map(kw => ({ word: kw, importance: 0.5 }))
+            explanation: (result.reasons || []).join(". "),
+            contributingKeywords: (result.keywords || []).map(kw => ({ word: kw, importance: 0.5 }))
         };
     } catch (error) {
-        console.error("Spam analysis failed:", getErrorMessage(error));
         return null;
     }
 }
@@ -69,6 +74,6 @@ async function sendFeedback(emailObj, isActuallySpam) {
         await securePost("/feedback", feedbackPayload);
         console.log("Feedback logged successfully");
     } catch (error) {
-        console.error("Feedback submission failed:", getErrorMessage(error));
+        console.error("Feedback failed");
     }
 }

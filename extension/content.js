@@ -1,13 +1,13 @@
 console.log("Smart Gmail Spam Detector is active.");
 
-// Initialize the observer
+// Initialize the assistant
 function init() {
-    // Gmail is a Single Page App (SPA).
-    // We start observing when the document is ready.
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        startObservingInbox();
+    // Check if the observer script has loaded its main function
+    if (typeof startObserving === 'function') {
+        startObserving();
     } else {
-        window.addEventListener('load', startObservingInbox);
+        // Fallback for race conditions
+        setTimeout(init, 500);
     }
 }
 
