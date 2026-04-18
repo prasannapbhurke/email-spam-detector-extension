@@ -35,24 +35,22 @@ async function securePost(endpoint, body) {
 
 async function getEmailAnalysis(email) {
     const payload = {
-        id: email.id || String(Date.now()),
-        subject: email.subject || "",
-        sender: email.sender || "",
-        snippet: email.snippet || "",
-        body: email.body || ""
+        email_text: `${email.subject} ${email.snippet} ${email.body}`,
+        html_content: email.body // Assuming body contains HTML for link analysis
     };
 
     try {
         const result = await securePost("/predict", payload);
         return {
-            id: result.id,
-            isSpam: Boolean(result.isSpam),
-            confidence: Number(result.confidence) || 0,
-            intentSummary: result.intentSummary || "",
-            warningMessage: result.warningMessage || null,
-            suggestedFilter: result.suggestedFilter || "",
-            contributingKeywords: Array.isArray(result.contributingKeywords) ? result.contributingKeywords : [],
-            technicalExplanation: result.technicalExplanation || ""
+            label: result.label,
+            risk_score: result.risk_score,
+            confidence: result.confidence,
+            reasons: result.reasons || [],
+            keywords: result.keywords || [],
+            // Mapping for UI backward compatibility
+            isSpam: result.label !== "Safe",
+            explanation: result.reasons.join(". "),
+            contributingKeywords: result.keywords.map(kw => ({ word: kw, importance: 0.5 }))
         };
     } catch (error) {
         console.error("Spam analysis failed:", getErrorMessage(error));

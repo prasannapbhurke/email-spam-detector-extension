@@ -5,32 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict, Any, Optional
 import asyncio
 import bleach
-import hashlib
 import os
-import json
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 from model_utils import classifier
 from phishing_detector import phishing_expert
+from transformer_service import transformer_service
 from dotenv import load_dotenv
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "dev-secret-key-12345")
-API_KEY_NAME = "X-API-Key"
-FEEDBACK_FILE = "feedback_data.json"
-
-api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
-
-async def get_api_key(api_key: str = Security(api_key_header)):
-    if api_key == API_KEY: return api_key
-    raise HTTPException(status_code=403, detail="Could not validate credentials")
-
-limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="AI Email Assistant API")
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app = FastAPI(title="Secure XAI Hybrid Spam API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,106 +22,70 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-prediction_cache: Dict[str, Dict[str, Any]] = {}
+API_KEY = os.getenv("API_KEY", "dev-secret-key-12345")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
 
-@app.on_event("startup")
-async def startup_event():
-    classifier.load()
+async def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key == API_KEY: return api_key
+    raise HTTPException(status_code=403, detail="Invalid API Key")
 
-class EmailData(BaseModel):
-    id: str = Field("")
-    subject: str = Field("")
-    sender: str = Field("")
-    snippet: str = Field("")
-    body: str = Field("")
-
-    @field_validator("body", "subject", "snippet", "sender")
-    @classmethod
-    def sanitize_content(cls, v):
-        return bleach.clean(v, tags=['a'], attributes={'a': ['href']}, strip=True)
-
-class FeedbackData(BaseModel):
-    id: str
-    text: str
-    isActuallySpam: bool
+class PredictionRequest(BaseModel):
+    email_text: str = Field(..., min_length=1)
+    html_content: str = Field("")
 
 class PredictionResponse(BaseModel):
-    id: str
-    isSpam: bool
+    label: str
+    risk_score: int
     confidence: float
-    intentSummary: str  # Product feature: Intent analysis
-    warningMessage: Optional[str] = None # Product feature: Specific warnings
-    suggestedFilter: str # Product feature: Automation
-    contributingKeywords: List[Dict[str, Any]]
-    technicalExplanation: Optional[str] = None
-
-def generate_intent(is_spam: bool, phish_res: dict, keywords: list) -> str:
-    if phish_res["isPhishing"]:
-        return "Urgent: This sender is attempting to compromise your security by requesting sensitive information."
-    if is_spam:
-        top_words = [k['word'] for k in keywords[:2]] if keywords else ["suspicious patterns"]
-        return f"Promotional: Likely an unsolicited attempt to sell services or products related to '{', '.join(top_words)}'."
-    return "Authentic: This looks like a legitimate standard communication."
-
-@app.get("/")
-async def root():
-    return {"status": "ok", "service": "AI Email Assistant"}
+    reasons: List[str]
+    keywords: List[str]
 
 @app.post("/predict", response_model=PredictionResponse)
-@limiter.limit("60/minute")
-async def predict(request: Request, email: EmailData, api_key: str = Security(get_api_key)):
-    content = f"{email.subject} {email.snippet} {email.body}"
-    content = content.strip() or "Empty Content"
-
-    email_id = email.id.strip() or hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+async def predict(req: PredictionRequest, api_key: str = Security(get_api_key)):
+    # 1. Standard Ensemble Prediction
+    ml_results = await asyncio.to_thread(classifier.predict_batch, [req.email_text])
+    ensemble_score = ml_results[0]["confidence"] if ml_results else 0.5
+    ensemble_keywords = [k["word"] for k in ml_results[0]["contributingKeywords"]] if ml_results else []
     
-    # Check cache
-    if email_id in prediction_cache:
-        return {"id": email_id, **prediction_cache[email_id]}
-
-    # 1. Run ML Analysis
-    ml_res = await asyncio.to_thread(classifier.predict_batch, [content])
-    phish_res = phishing_expert.scan(content, email.body)
+    # 2. Transformer Prediction (DistilBERT)
+    transformer_score = await asyncio.to_thread(transformer_service.predict, req.email_text)
     
-    res = ml_res[0]
-    is_spam = res["isSpam"] or phish_res["isPhishing"]
+    # 3. Phishing Expert Analysis
+    phish_res = phishing_expert.scan(req.email_text, req.html_content)
     
-    # 2. Generate Product Logic
-    intent = generate_intent(is_spam, phish_res, res["contributingKeywords"])
+    # 4. Hybrid Scoring Formula
+    # final_score = 0.6 * transformer + 0.4 * ensemble
+    final_confidence = (0.6 * transformer_score) + (0.4 * ensemble_score)
     
-    try:
-        domain = email.sender.split('@')[-1].split('>')[0]
-    except:
-        domain = "sender"
+    # Boost if phishing detected manually
+    if phish_res["isPhishing"]:
+        final_confidence = max(final_confidence, phish_res["phishingScore"])
+    
+    # 5. Risk Score Conversion
+    risk_score = int(final_confidence * 100)
+    
+    if risk_score <= 30:
+        label = "Safe"
+    elif risk_score <= 70:
+        label = "Suspicious"
+    else:
+        label = "Dangerous"
 
-    warning = phish_res["reasons"][0] if phish_res["reasons"] else None
+    # 6. Aggregate Reasons
+    reasons = phish_res["reasons"]
+    if transformer_score > 0.8 and not phish_res["reasons"]:
+        reasons.append("Neural patterns match known malicious communication styles")
+    if not reasons and label != "Safe":
+        reasons.append("High probability detected by structural analysis")
 
-    result = {
-        "id": email_id,
-        "isSpam": is_spam,
-        "confidence": max(res["confidence"], phish_res["phishingScore"]),
-        "intentSummary": intent,
-        "warningMessage": warning,
-        "suggestedFilter": f"from:{domain}",
-        "contributingKeywords": res["contributingKeywords"],
-        "technicalExplanation": res["technicalExplanation"]
+    return {
+        "label": label,
+        "risk_score": risk_score,
+        "confidence": round(final_confidence, 4),
+        "reasons": reasons,
+        "keywords": ensemble_keywords
     }
-    
-    prediction_cache[email_id] = result
-    return result
-
-@app.post("/feedback")
-async def receive_feedback(feedback: FeedbackData, api_key: str = Security(get_api_key)):
-    new_entry = {"text": feedback.text, "label": 1 if feedback.isActuallySpam else 0}
-    data = []
-    if os.path.exists(FEEDBACK_FILE):
-        with open(FEEDBACK_FILE, "r") as f:
-            try: data = json.load(f)
-            except: data = []
-    data.append(new_entry)
-    with open(FEEDBACK_FILE, "w") as f:
-        json.dump(data, f, indent=4)
-    return {"status": "success"}
 
 if __name__ == "__main__":
     import uvicorn

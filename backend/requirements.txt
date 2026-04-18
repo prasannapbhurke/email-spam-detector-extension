@@ -9,3 +9,6 @@ joblib
 slowapi
 bleach
 python-dotenv
+torch
+transformers
+requests
