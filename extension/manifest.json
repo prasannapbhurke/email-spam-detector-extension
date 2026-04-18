@@ -6,6 +6,8 @@
   "permissions": ["storage"],
   "host_permissions": [
     "https://mail.google.com/*",
+    "http://127.0.0.1:8002/*",
+    "http://localhost:8002/*",
     "https://*.up.railway.app/*"
   ],
   "action": {

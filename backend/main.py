@@ -52,7 +52,15 @@ class PredictionRequest(BaseModel):
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "CORS Overridden"}
+    return {"status": "online", "message": "AI Email Assistant"}
+
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "modelLoaded": classifier.model is not None or classifier.load(),
+        "transformerLoaded": getattr(transformer_service, "_initialized", False)
+    }
 
 @app.post("/predict")
 async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key: str = Security(get_api_key)):

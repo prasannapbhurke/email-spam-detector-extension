@@ -1,20 +1,30 @@
-// PRODUCTION CONFIGURATION
-const API_BASE_URL = "https://web-production-edebc.up.railway.app";
+const API_BASE_URL = "http://127.0.0.1:8002";
 const API_KEY = "dev-secret-key-12345";
 
-// Request Queue to prevent flooding the server
 let requestQueue = Promise.resolve();
 
+function getErrorMessage(error) {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+
+    if (typeof error === "string" && error.trim()) {
+        return error;
+    }
+
+    try {
+        return JSON.stringify(error);
+    } catch {
+        return "Unknown error";
+    }
+}
+
 async function securePost(endpoint, body) {
-    // Chain the request to the queue (One at a time)
-    return requestQueue = requestQueue.then(async () => {
+    requestQueue = requestQueue.then(async () => {
         const controller = new AbortController();
-        // Increased to 120 seconds for deep learning cold-starts in the cloud
-        // Railway free tier can be slow when downloading/loading DistilBERT
-        const timeoutId = setTimeout(() => controller.abort(), 120000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
 
         try {
-            console.log(`📡 AI Assistant: Calling ${endpoint}...`);
             const response = await fetch(API_BASE_URL + endpoint, {
                 method: "POST",
                 headers: {
@@ -27,64 +37,90 @@ async function securePost(endpoint, body) {
 
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`❌ Backend Error (${response.status}):`, text);
-                throw new Error(`HTTP ${response.status}`);
+                throw new Error(`HTTP ${response.status}: ${text}`);
             }
 
-            const data = await response.json();
-            console.log(`✅ AI Assistant: Prediction Successful.`);
-            return data;
-        } catch (err) {
-            if (err.name === "AbortError") {
-                console.warn("⏳ AI Assistant: Cloud AI is still initializing. This happens after long periods of inactivity. Please wait 1-2 minutes.");
-            } else {
-                console.error("🌐 AI Assistant: Network error.", err);
+            return await response.json();
+        } catch (error) {
+            if (error && error.name === "AbortError") {
+                throw new Error("Request timed out");
             }
-            throw err;
+
+            if (error instanceof Error) {
+                throw error;
+            }
+
+            throw new Error("Network error");
         } finally {
             clearTimeout(timeoutId);
-            // Wait 500ms between requests to be polite to Railway's CPU
-            await new Promise(r => setTimeout(r, 500));
         }
     });
+
+    return requestQueue;
+}
+
+function normalizePrediction(result, emailText) {
+    const riskScore = Number(result.risk_score) || 0;
+    const confidence = typeof result.confidence === "number" ? result.confidence : riskScore / 100;
+    const reasons = Array.isArray(result.reasons) ? result.reasons : [];
+    const rawKeywords = Array.isArray(result.keywords) ? result.keywords : [];
+    const contributingKeywords = rawKeywords.map((keyword) => {
+        if (typeof keyword === "string") {
+            return { word: keyword, importance: 0.5 };
+        }
+
+        return {
+            word: keyword.word || "",
+            importance: typeof keyword.importance === "number" ? keyword.importance : 0.5
+        };
+    }).filter((keyword) => keyword.word);
+
+    const intentSummary = reasons.length > 0
+        ? reasons.join(" ")
+        : (riskScore >= 70 ? "This email shows strong spam or phishing signals." : "No major spam indicators were detected.");
+
+    return {
+        label: result.label || "Analyzed",
+        risk_score: riskScore,
+        confidence,
+        reasons,
+        keywords: rawKeywords,
+        isSpam: riskScore >= 50 || result.label === "Suspicious" || result.label === "Dangerous",
+        explanation: intentSummary,
+        intentSummary,
+        warningMessage: reasons[0] || "",
+        suggestedFilter: riskScore >= 70 ? "Move to Spam / Quarantine" : "Keep in Inbox",
+        contributingKeywords,
+        emailText
+    };
 }
 
 async function getEmailAnalysis(email) {
+    const emailText = `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content";
     const payload = {
-        email_text: `${email.subject || ""} ${email.snippet || ""} ${email.body || ""}`.trim() || "No content",
+        email_text: emailText,
         html_content: email.body || ""
     };
 
     try {
         const result = await securePost("/predict", payload);
-        if (!result) return null;
-
-        return {
-            label: result.label || "Analyzed",
-            risk_score: result.risk_score || 0,
-            confidence: result.confidence || 0.5,
-            reasons: result.reasons || [],
-            keywords: result.keywords || [],
-            // Mapping for UI backward compatibility
-            isSpam: result.label !== "Safe",
-            explanation: (result.reasons || []).join(". "),
-            contributingKeywords: (result.keywords || []).map(kw => ({ word: kw, importance: 0.5 }))
-        };
+        return normalizePrediction(result, emailText);
     } catch (error) {
+        console.error("Spam analysis failed:", getErrorMessage(error), error);
         return null;
     }
 }
 
 async function sendFeedback(emailObj, isActuallySpam) {
-    const feedbackPayload = {
-        text: `${emailObj.subject || ""} ${emailObj.body || ""}`,
+    const payload = {
+        text: `${emailObj.subject || ""} ${emailObj.body || ""}`.trim(),
         prediction: isActuallySpam ? "spam" : "ham",
-        isActuallySpam: isActuallySpam
+        isActuallySpam
     };
+
     try {
-        await securePost("/feedback", feedbackPayload);
-        console.log("Feedback logged successfully");
+        await securePost("/feedback", payload);
     } catch (error) {
-        console.error("Feedback failed");
+        console.error("Feedback submission failed:", getErrorMessage(error), error);
     }
 }

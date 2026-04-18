@@ -1,5 +1,3 @@
-console.log("Smart Gmail Spam Detector is active.");
-
 // Initialize the assistant
 function init() {
     // Check if the observer script has loaded its main function

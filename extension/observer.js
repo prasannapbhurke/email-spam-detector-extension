@@ -7,7 +7,14 @@ const intersectionObserver = new IntersectionObserver((entries) => {
     });
 }, { threshold: 0.1 });
 
+let observerStarted = false;
+
 function startObserving() {
+    if (observerStarted) {
+        return;
+    }
+    observerStarted = true;
+
     const observer = new MutationObserver(() => {
         // 1. Process Inbox Rows
         const rows = document.querySelectorAll('tr[role="row"]');
@@ -80,5 +87,3 @@ async function processOpenedEmail(container) {
         injectTopPanel(injectionTarget, data, emailObj);
     }
 }
-
-startObserving();
