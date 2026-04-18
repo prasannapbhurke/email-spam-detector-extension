@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch.nn.functional as F
+import os
 
 class TransformerService:
     _instance = None
@@ -8,49 +9,42 @@ class TransformerService:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(TransformerService, cls).__new__(cls)
+            cls._instance.tokenizer = None
+            cls._instance.model = None
             cls._instance._initialized = False
         return cls._instance
 
-    def __init__(self):
+    def _lazy_load(self):
+        """Loads the model only when needed to prevent startup hang."""
         if self._initialized:
             return
         
-        self.model_name = "distilbert-base-uncased"
+        print("📥 First-time use: Loading Transformer model (DistilBERT)...")
+        model_name = "distilbert-base-uncased"
         try:
-            # Note: In production, ideally load a fine-tuned version
-            # Using base model here for architectural implementation
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModelForSequenceClassification.from_pretrained(self.model_name, num_labels=2)
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+            self.device = torch.device("cpu") # Force CPU for Railway stability
             self.model.to(self.device)
             self.model.eval()
             self._initialized = True
-            print(f"Transformer model {self.model_name} loaded successfully on {self.device}")
+            print("✅ Transformer ready.")
         except Exception as e:
-            print(f"Error loading transformer model: {e}")
-            self.model = None
+            print(f"❌ Failed to load transformer: {e}")
 
     def predict(self, text: str) -> float:
-        """Returns spam probability (0-1)"""
+        self._lazy_load()
         if not self.model:
-            return 0.5 # Neutral fallback
+            return 0.5
         
         try:
-            inputs = self.tokenizer(
-                text, 
-                return_tensors="pt", 
-                truncation=True, 
-                max_length=512
-            ).to(self.device)
-            
+            inputs = self.tokenizer(text, return_tensors="pt", truncation=True, max_length=512)
             with torch.no_grad():
                 outputs = self.model(**inputs)
                 probs = F.softmax(outputs.logits, dim=-1)
-                # Label 1 is typically spam in binary datasets
-                spam_prob = probs[0][1].item()
-                return spam_prob
+                return probs[0][1].item()
         except Exception as e:
-            print(f"Transformer inference error: {e}")
+            print(f"Inference error: {e}")
             return 0.5
 
 transformer_service = TransformerService()

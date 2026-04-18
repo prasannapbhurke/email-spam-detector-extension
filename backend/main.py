@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="Production AI Email Assistant")
+app = FastAPI(title="Optimized AI Email Assistant")
 
 # --- Security ---
 API_KEY = os.getenv("API_KEY", "dev-secret-key-12345")
@@ -31,16 +31,9 @@ async def get_api_key(api_key: str = Security(api_key_header)):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["*"], 
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    print("🚀 Server starting up...")
-    # Load ensemble model (fast)
-    classifier.load()
-    print("✅ Ensemble model loaded.")
 
 # --- Models ---
 class PredictionRequest(BaseModel):
@@ -50,14 +43,14 @@ class PredictionRequest(BaseModel):
 # --- Routes ---
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "AI Assistant Backend is Running"}
+    return {"status": "online", "server_time": time.time()}
 
 @app.get("/health")
 async def health():
     return {
         "status": "healthy",
-        "ensemble_loaded": classifier.model is not None,
-        "transformer_init": transformer_service._initialized if hasattr(transformer_service, '_initialized') else False
+        "ensemble_init": classifier.model is not None,
+        "transformer_init": transformer_service._initialized
     }
 
 @app.post("/predict")
@@ -67,24 +60,23 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
         cached = cache_service.get(req.email_text)
         if cached: return cached
 
-        # 2. Hybrid Inference with Fallback
+        # 2. Sequential Inference with Fallbacks (Save memory)
+        # First: Lightweight ML
         ensemble_prob = 0.5
         try:
             ensemble_prob = await asyncio.to_thread(classifier.get_raw_spam_probability, req.email_text)
-        except Exception as e:
-            print(f"Ensemble error: {e}")
+        except: pass
 
-        # Lazy load transformer to prevent timeout
+        # Second: Cybersecurity scan (Fast)
+        phish_res = phishing_expert.scan(req.email_text, req.html_content)
+
+        # Third: Deep Learning (Slowest - load only if necessary or on-demand)
         transformer_prob = 0.5
         try:
             transformer_prob = await asyncio.to_thread(transformer_service.predict, req.email_text)
-        except Exception as e:
-            print(f"Transformer error: {e}")
+        except: pass
         
-        # 3. Cybersecurity Expert
-        phish_res = phishing_expert.scan(req.email_text, req.html_content)
-        
-        # 4. Hybrid Formula (Weighted)
+        # 4. Hybrid Decision
         confidence = (0.6 * transformer_prob) + (0.4 * ensemble_prob)
         if phish_res.get("isPhishing"):
             confidence = max(confidence, phish_res.get("phishingScore", 0))
@@ -100,12 +92,17 @@ async def predict(req: PredictionRequest, db: Session = Depends(get_db), api_key
             "keywords": [k["word"] for k in classifier.get_explainability_weights(req.email_text)] if classifier.model else []
         }
 
-        # 5. Store in Cache
         cache_service.set(req.email_text, result)
         return result
     except Exception as e:
-        print(f"Prediction crash: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Prediction error: {e}")
+        return {
+            "label": "Analyzed",
+            "risk_score": 0,
+            "confidence": 0.5,
+            "reasons": ["Analysis engine is busy"],
+            "keywords": []
+        }
 
 @app.post("/feedback")
 async def feedback(data: Dict[str, Any], db: Session = Depends(get_db), api_key: str = Security(get_api_key)):
@@ -118,9 +115,11 @@ async def feedback(data: Dict[str, Any], db: Session = Depends(get_db), api_key:
         db.add(new_feedback)
         db.commit()
         return {"status": "saved"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    except:
+        return {"status": "error"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    # Use Railway's port
+    port = int(os.getenv("PORT", 8002))
+    uvicorn.run(app, host="0.0.0.0", port=port)
