@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+gunicorn
+pydantic
+scikit-learn
+pandas
+numpy
+joblib
+slowapi
+bleach
+python-dotenv
