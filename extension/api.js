@@ -9,11 +9,12 @@ async function securePost(endpoint, body) {
     // Chain the request to the queue (One at a time)
     return requestQueue = requestQueue.then(async () => {
         const controller = new AbortController();
-        // 45 seconds for cloud cold-start (model download + load)
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
+        // Increased to 120 seconds for deep learning cold-starts in the cloud
+        // Railway free tier can be slow when downloading/loading DistilBERT
+        const timeoutId = setTimeout(() => controller.abort(), 120000);
 
         try {
-            console.log(`📡 AI Assistant: Processing ${endpoint}...`);
+            console.log(`📡 AI Assistant: Calling ${endpoint}...`);
             const response = await fetch(API_BASE_URL + endpoint, {
                 method: "POST",
                 headers: {
@@ -26,16 +27,16 @@ async function securePost(endpoint, body) {
 
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`❌ API Error (${response.status}):`, text);
+                console.error(`❌ Backend Error (${response.status}):`, text);
                 throw new Error(`HTTP ${response.status}`);
             }
 
             const data = await response.json();
-            console.log(`✅ AI Assistant: Done.`);
+            console.log(`✅ AI Assistant: Prediction Successful.`);
             return data;
         } catch (err) {
             if (err.name === "AbortError") {
-                console.warn("⏳ AI Assistant: Server is taking too long to load AI. Cloud model is still waking up.");
+                console.warn("⏳ AI Assistant: Cloud AI is still initializing. This happens after long periods of inactivity. Please wait 1-2 minutes.");
             } else {
                 console.error("🌐 AI Assistant: Network error.", err);
             }
@@ -56,10 +57,12 @@ async function getEmailAnalysis(email) {
 
     try {
         const result = await securePost("/predict", payload);
+        if (!result) return null;
+
         return {
-            label: result.label,
-            risk_score: result.risk_score,
-            confidence: result.confidence,
+            label: result.label || "Analyzed",
+            risk_score: result.risk_score || 0,
+            confidence: result.confidence || 0.5,
             reasons: result.reasons || [],
             keywords: result.keywords || [],
             // Mapping for UI backward compatibility
