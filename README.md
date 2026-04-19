@@ -1,59 +1,53 @@
 # Smart Gmail Spam Detector
 
-[![Tests](https://github.com/prasannapbhurke/email-spam-detector-extension/actions/workflows/tests.yml/badge.svg)](https://github.com/prasannapbhurke/email-spam-detector-extension/actions)
-[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 
-> AI-powered intelligent spam detection extension for Gmail with explainable AI results.
+> AI-powered intelligent spam detection extension for Gmail with Chrome extension integration.
 
-A production-style email spam detection system with Chrome extension integration, featuring multi-layer detection combining ML ensemble, transformer-based AI text detection, phishing scanning, domain analysis, and stylometry.
-
-## Features
-
-- **Multi-layer Detection**: Combines ML ensemble, transformer-based AI detection, phishing scanning, domain analysis, and stylometry
-- **Explainable AI**: Shows keywords and reasons for each prediction
-- **Real-time Scanning**: Automatically analyzes emails in Gmail
-- **Quarantine Management**: Review and manage flagged emails through extension popup
-- **Feedback Loop**: Submit corrections to improve the model
-- **Statistics Dashboard**: Track spam detection performance over time
-- **Caching**: Intelligent caching for faster repeated analysis
+This project provides a production-style email spam detection with Chrome browser extension.
 
 ## Tech Stack
 
-- **Backend**: Python 3.9+, FastAPI, scikit-learn, SQLite/PostgreSQL
+- **Backend**: Python 3.9+, FastAPI, scikit-learn (ensemble), SQLAlchemy
 - **ML Models**: TF-IDF + Ensemble (LogisticRegression, RandomForest, SVM, NaiveBayes)
-- **Extension**: Chrome Extension (Manifest V3), JavaScript
+- **Extension**: Chrome Extension (Manifest V3)
+
+## Features
+
+- Multi-layer spam detection system
+- ML ensemble classifier with TF-IDF features
+- Transformer-based AI text detection
+- Phishing indicator scanner
+- Domain age and reputation analyzer
+- Stylometry analysis (AI-generated text detection)
+- Chrome extension for Gmail
+- Quarantine management
+- Self-learning via feedback
 
 ## Architecture
 
 ```
 email-spam-detector-extension/
-├── backend/                          # FastAPI server
-│   ├── main.py                       # API endpoints & orchestration
-│   ├── database.py                   # SQLAlchemy models (Feedback, PredictionLog)
-│   ├── model_utils.py                # ML ensemble classifier
-│   ├── phishing_detector.py          # Phishing indicator scanner
-│   ├── domain_analyzer.py           # Domain age/reputation analysis
-│   ├── stylometry_analyzer.py      # AI-generated text detection
-│   ├── transformer_service.py      # Transformer-based detection
-│   ├── cache_service.py            # In-memory caching
-│   ├── train_model.py            # Model training script
-│   ├── retrain_pipeline.py       # Self-learning pipeline
-│   └── requirements.txt
-└── extension/                       # Chrome Extension
-    ├── manifest.json               # Extension configuration
-    ├── popup.html               # Extension popup UI
-    ├── popup.js                # Popup logic
-    ├── content.js              # Gmail content injection
-    ├── api.js                # Backend API communication
-    ├── ui.js                 # UI components
-    ├── observer.js           # DOM observation
-    └── styles.css            # Styling
+├── backend/
+│   ├── main.py                    # FastAPI server
+│   ├── database.py               # Database models
+│   ├── model_utils.py           # ML ensemble classifier
+│   ├── phishing_detector.py    # Phishing scanner
+│   ├── domain_analyzer.py     # Domain analysis
+│   ├── stylometry_analyzer.py # AI text detection
+│   ├── transformer_service.py # Transformer service
+│   └── cache_service.py      # Caching
+└── extension/
+    ├── manifest.json
+    ├── popup.html
+    ├── content.js
+    ├── api.js
+    ├── ui.js
+    └── observer.js
 ```
 
-## Quick Start
-
-### Backend Setup
+## Backend Setup
 
 ```bash
 cd backend
@@ -61,33 +55,15 @@ pip install -r requirements.txt
 python main.py
 ```
 
-The API runs on `http://localhost:8002`
+Server runs on `http://localhost:8002`
 
-### Chrome Extension Installation
-
-1. Open `chrome://extensions`
-2. Enable **Developer Mode** (top-right toggle)
-3. Click **Load Unpacked**
-4. Select the `extension` folder
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `GET /` | GET | Health check |
-| `GET /health` | GET | Detailed health status |
-| `POST /predict` | POST | Analyze email text |
-| `POST /feedback` | POST | Submit correction |
-| `GET /stats` | GET | Detection statistics |
-| `GET /weekly-report` | GET | Weekly threat report |
-
-### Predict API
+### Prediction API
 
 ```bash
 curl -X POST http://localhost:8002/predict \
   -H "Content-Type: application/json" \
   -H "X-API-Key: dev-secret-key-12345" \
-  -d '{"email_text": "Your email content here", "analysis_mode": "full"}'
+  -d '{"email_text": "Your email content", "analysis_mode": "full"}'
 ```
 
 Response:
@@ -108,44 +84,66 @@ Response:
 }
 ```
 
+## Chrome Extension Setup
+
+1. Open `chrome://extensions`
+2. Enable **Developer Mode**
+3. Click **Load Unpacked**
+4. Select the `extension` folder
+
+---
+
+## Quick Test
+
+```bash
+# Start the API server
+python backend/main.py
+
+# Test a prediction
+python -c "
+from model_utils import classifier
+classifier.load()
+prob = classifier.get_raw_spam_probability('WIN FREE MONEY NOW!!!')
+print(f'Spam probability: {prob:.2%}')
+"
+```
+
+---
+
 ## Detection Components
 
 ### 1. ML Ensemble Classifier
-- LogisticRegression with TF-IDF (ngram_range: 1-3, max_features: 5000)
-- RandomForest (100 estimators)
-- SVM with linear kernel
-- Multinomial NaiveBayes
-- Voting ensemble for final prediction
+- TF-IDF (ngram_range: 1-3, max_features: 5000)
+- LogisticRegression, RandomForest, SVM, NaiveBayes
+- Voting ensemble
 
 ### 2. Transformer-based AI Detection
-- Detects AI-generated content patterns
-- Analyzes writing style consistency
-- Sentence structure analysis
+- AI-generated text patterns
+- Writing style analysis
 
 ### 3. Phishing Scanner
-- Urgent/threatening language detection
-- Suspicious link analysis
+- Urgent language detection
+- Suspicious links
 - Attachment indicators
-- Impersonal patterns
 
 ### 4. Domain Analyzer
 - Domain age verification
 - TLD reputation scoring
-- Entropy analysis for domain randomization
 - Blacklist checking
+- Entropy analysis
 
 ### 5. Stylometry Analyzer
-- Type-token ratio analysis
+- Type-token ratio
 - Sentence length variance
 - Writing pattern fingerprinting
 
-## Scoring Algorithm
+### Scoring Algorithm
 
 ```
-final_score = 0.5 * hybrid_model_score
-           + 0.2 * phishing_score
-           + 0.15 * domain_score
-           + 0.15 * stylometry_score
+final_score = 0.5 * hybrid_model
+          + 0.2 * phishing_score
+          + 0.15 * domain_score
+          + 0.15 * stylometry_score
 ```
 
 | Risk Score | Label |
@@ -154,55 +152,20 @@ final_score = 0.5 * hybrid_model_score
 | 31-70 | Suspicious |
 | 71-100 | Dangerous |
 
-## Environment Variables
+---
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `8002` |
-| `API_KEY` | API authentication key | `dev-secret-key-12345` |
-| `DATABASE_URL` | Database connection URI | SQLite local file |
-| `TFIDF_MAX_FEATURES` | Max TF-IDF features | `5000` |
+## API Endpoints
 
-## Database Schema
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `GET /` | GET | Health check |
+| `GET /health` | GET | Detailed health |
+| `POST /predict` | POST | Analyze email |
+| `POST /feedback` | POST | Submit correction |
+| `GET /stats` | GET | Statistics |
+| `GET /weekly-report` | GET | Weekly report |
 
-### Feedback Table
-- `id`: Primary key
-- `email_text`: Original email content
-- `prediction`: Original prediction
-- `user_label`: Corrected label (spam/ham)
-- `timestamp`: Submission time
-
-### PredictionLog Table
-- `id`: Primary key
-- `email_text`: Email content
-- `label`: Prediction label
-- `risk_score`: Risk score (0-100)
-- `component_scores`: Individual scores
-- `attack_type`: Detected attack type
-- `cached`: Cache hit flag
-- `timestamp`: Analysis time
-
-## Gmail Integration
-
-The Chrome extension automatically:
-
-1. **Monitors Gmail**: Uses MutationObserver to detect new emails
-2. **Extracts Content**: Parses email subject and body
-3. **Sends for Analysis**: Calls backend API with email content
-4. **Displays Results**:Shows inline risk indicators
-5. **Provides Actions**: Option to mark as spam/not spam
-
-### Extension Permissions
-
-- `storage`: Local data persistence
-- `https://mail.google.com/*`: Gmail access
-- `http://localhost:8002/*`: Local API access
-- `https://*.up.railway.app/*`: Remote API access
-
-## Self-Learning System
-
-### Feedback Collection
-Users can submit corrections via the extension popup or API:
+### Feedback API
 
 ```bash
 curl -X POST http://localhost:8002/feedback \
@@ -211,17 +174,14 @@ curl -X POST http://localhost:8002/feedback \
   -d '{"text": "original email", "prediction": "spam", "isActuallySpam": true}'
 ```
 
-### Retraining Pipeline
-Feedback data can be used to retrain and improve the model:
+### Statistics
 
 ```bash
-python retrain_pipeline.py --min-feedback 50
+curl -X GET http://localhost:8002/stats \
+  -H "X-API-Key: dev-secret-key-12345"
 ```
 
-## Statistics Dashboard
-
-### Endpoint: `/stats`
-
+Response:
 ```json
 {
   "total_scanned": 15420,
@@ -231,81 +191,47 @@ python retrain_pipeline.py --min-feedback 50
 }
 ```
 
-### Endpoint: `/weekly-report`
+---
 
-```json
-{
-  "threats_avoided": 892,
-  "most_common_attack_type": "phishing",
-  "sample_window_days": 7
-}
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `8002` |
+| `API_KEY` | API key | `dev-secret-key-12345` |
+| `DATABASE_URL` | Database URL | SQLite file |
+
+---
+
+## Training
+
+```bash
+python train_model.py --data path/to/dataset.csv
 ```
 
-## Expected Performance
+Dataset format:
+- `text`: Email content
+- `label`: `spam`/`ham` or `1`/`0`
 
-| Metric | Value |
-|--------|-------|
-| Accuracy | ~95% |
-| Precision | ~94% |
-| Recall | ~96% |
-| F1-Score | ~95% |
-
-*Performance may vary based on training data quality and volume.*
-
-## Advanced AI Features
-
-### LIME Explainability
-Understanding why the model classified an email as spam:
-- Feature importance visualization
-- Word-level contribution analysis
-- Human-readable explanations
-
-### Phishing URL Detection
-- Shortened URL detection (bit.ly, tinyurl, etc.)
-- IP address URL detection
-- Typosquatting recognition
-- Suspicious TLD analysis
-
-### Multi-Language Support
-- English, Spanish, French, German
-- Chinese, Japanese, Korean
-- Language-specific spam patterns
+---
 
 ## Deployment
 
-### Railway (Recommended)
+### Railway
 
 1. Connect GitHub repository
-2. Set environment variables:
-   - `DATABASE_URL`: PostgreSQL connection
-   - `API_KEY`: Your secure API key
-3. Deploy automatically
-
-### Local Development
-
-```bash
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Run server
-python backend/main.py
-```
+2. Set environment variables
+3. Deploy
 
 ### Docker
 
 ```bash
 docker build -t spam-detector .
-docker run -p 8002:8002 -e DATABASE_URL=postgresql://... spam-detector
+docker run -p 8002:8002 spam-detector
 ```
+
+---
 
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please read the [contributing guidelines](CONTRIBUTING.md) first.
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for security vulnerability reporting.
